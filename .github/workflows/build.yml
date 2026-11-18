@@ -7,6 +7,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      only:
+        description: 'Csak ez az app (pl. anicraft); üresen mind'
+        required: false
+        default: ''
 
 env:
   CRAFT_FONTS_REF: b076417b5880bd4154bd22f00695b1d28c6bea83
@@ -16,6 +21,7 @@ env:
 
 jobs:
   launcher:
+    if: ${{ !inputs.only || inputs.only == 'craftoffice' }}
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
@@ -60,12 +66,15 @@ jobs:
           - { app: craft-anything, src: git:48a9c5a60ff83ff620f98661339be6281a7debc6 }
     steps:
       - name: Git settings
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
         shell: bash
         run: |
           git config --global core.autocrlf false
           git config --global core.longpaths true
       - uses: actions/checkout@v4
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
       - name: Prepare sources
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
         shell: bash
         run: |
           set -e
@@ -89,15 +98,19 @@ jobs:
             git:*) fetch "${{ matrix.app }}" appsrc "${SRC#git:}"
                    git -C appsrc apply --whitespace=nowarn "$W/patches/${{ matrix.app }}.patch" ;;
           esac
+          # AniCraft: a CraftOffice mod-sorok a belső attribútumok mögé
+          [ -f appsrc/src/main.rs ] && perl -0pi -e 's/(mod craftoffice_brand;\r?\nmod craftoffice_i18n;\r?\n)(.*?#!\[cfg_attr\(target_arch = "wasm32", allow\(dead_code\)\)\]\r?\n)/$2$1/s' appsrc/src/main.rs || true
           # a helyi gépen használt útvonalak cseréje a GitHub gép útvonalára
           find appsrc -name Cargo.toml -not -path "*/target/*" -print0 | xargs -0 sed -i "s#/home/claude/#$W/#g"
           echo "CRAFT_I18N_DIR=$W/craft-i18n" >> "$GITHUB_ENV"
           echo "CRAFT_FONTS_DIR=$W/craft-fonts" >> "$GITHUB_ENV"
       - name: Build ${{ matrix.app }}
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
         shell: bash
         working-directory: appsrc
         run: cargo build --release -p ${{ matrix.app }}
       - name: Package
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
         shell: bash
         run: |
           A="${{ matrix.app }}"
@@ -113,6 +126,7 @@ jobs:
           cp "appsrc/target/release/$A.exe" "out/$N/$N.exe"
           printf '{"id":"%s","version":null,"exe":"%s.exe"}' "$A" "$N" > "out/$N/craftoffice.json"
       - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
         with:
           name: app-${{ matrix.app }}
           path: out/
