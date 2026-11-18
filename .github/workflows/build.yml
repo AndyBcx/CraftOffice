@@ -1,0 +1,118 @@
+name: build
+
+# CraftOffice: a launcher és a 16 alkalmazás Windows-os fordítása a GitHub gépein (MSVC),
+# ugyanúgy, mint a Vormantis. Indítás: Actions → build → Run workflow (vagy push a main ágra).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CRAFT_FONTS_REF: b076417b5880bd4154bd22f00695b1d28c6bea83
+  EGUI_REF: 6d518fc799681571963842f95b55a6b68431b15a
+  I18N_REF: e56d26244bbac099bfd42e23fb12f78a4be418a7
+  CARGO_TERM_COLOR: never
+
+jobs:
+  launcher:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build CraftOffice launcher
+        shell: bash
+        run: |
+          tar xzf bundle/launcher-src.tar.gz
+          cd craftoffice
+          cargo build --release
+          mkdir -p ../out
+          cp target/release/craftoffice.exe ../out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-craftoffice
+          path: out/
+
+  app:
+    runs-on: windows-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        include:
+          - { app: wordcraft,      src: tar:wordcraft-main }
+          - { app: gridcraft,      src: tar:gridcraft-main }
+          - { app: pdfcraft,       src: git:b503b2e62dfeec5598f344e4e287d9c9cbdb34fa, i18n: 575cfdef63227b14daf173b8cc87928bfdfa325e }
+          - { app: photocraft,     src: git:45066c48292e92229ada3459a83453439514c83d, i18n: e02939ef009218e81c44e8ec001fbb7603461de4 }
+          - { app: deckcraft,      src: git:7cc73ab1895ed2e30c8afbcada20c70b9ea0a440 }
+          - { app: designcraft,    src: git:33a467872268c98536231491865b4011b0275b17 }
+          - { app: vectorcraft,    src: git:f4922aa7ac99a4f6d56fc68a83a44945207ec610 }
+          - { app: lightcraft,     src: git:361e3bc0c838ffe5e5cea515b1fe5b71951989c6 }
+          - { app: filmcraft,      src: git:cedf0c9bd060eb06a977d532402be2097c9ebe42 }
+          - { app: effectcraft,    src: git:582344dd4ef462362c02e56e3094de7af01847ab }
+          - { app: soundcraft,     src: git:a52bbdccbe15342f44e0de1906bf71a621e7a68f }
+          - { app: anicraft,       src: git:d0beaf253274948b55ee9e1107749f9491bff880 }
+          - { app: figcraft,       src: git:4acc293c2ec941ac1400837ee7e3ab51780399f8 }
+          - { app: cadcraft,       src: git:7526dc62c14e71b3c8d46e73bbf1fa29ef506af1 }
+          - { app: materialcraft,  src: git:65f7bfd3e5f40d695d03162285879f0f8079ff6c }
+          - { app: texturecraft,   src: git:34a196190fe2daa2f43017a0f32b254cca4836f2 }
+          - { app: craft-anything, src: git:48a9c5a60ff83ff620f98661339be6281a7debc6 }
+    steps:
+      - name: Git settings
+        shell: bash
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.longpaths true
+      - uses: actions/checkout@v4
+      - name: Prepare sources
+        shell: bash
+        run: |
+          set -e
+          W=$(cygpath -m "$GITHUB_WORKSPACE")
+          fetch() { mkdir -p "$2"; git -C "$2" init -q; git -C "$2" fetch -q --depth 1 "https://github.com/storytold/$1.git" "$3"; git -C "$2" checkout -q FETCH_HEAD; }
+          tar xzf bundle/patches.tar.gz
+          tar xzf bundle/egui036.tar.gz
+          fetch craft-fonts craft-fonts "$CRAFT_FONTS_REF"
+          fetch egui egui-hook "$EGUI_REF"
+          git -C egui-hook apply --whitespace=nowarn "$W/patches/egui.patch"
+          REF="${{ matrix.i18n }}"
+          if [ -z "$REF" ]; then
+            fetch craft-i18n craft-i18n "$I18N_REF"
+            git -C craft-i18n apply --whitespace=nowarn "$W/patches/craft-i18n.patch"
+          else
+            fetch craft-i18n craft-i18n "$REF"
+          fi
+          SRC="${{ matrix.src }}"
+          case "$SRC" in
+            tar:*) tar xzf "bundle/${{ matrix.app }}-src.tar.gz"; mv "${SRC#tar:}" appsrc ;;
+            git:*) fetch "${{ matrix.app }}" appsrc "${SRC#git:}"
+                   git -C appsrc apply --whitespace=nowarn "$W/patches/${{ matrix.app }}.patch" ;;
+          esac
+          # a helyi gépen használt útvonalak cseréje a GitHub gép útvonalára
+          find appsrc -name Cargo.toml -not -path "*/target/*" -print0 | xargs -0 sed -i "s#/home/claude/#$W/#g"
+          echo "CRAFT_I18N_DIR=$W/craft-i18n" >> "$GITHUB_ENV"
+          echo "CRAFT_FONTS_DIR=$W/craft-fonts" >> "$GITHUB_ENV"
+      - name: Build ${{ matrix.app }}
+        shell: bash
+        working-directory: appsrc
+        run: cargo build --release -p ${{ matrix.app }}
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p out
+          cp appsrc/target/release/${{ matrix.app }}.exe out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ matrix.app }}
+          path: out/
+
+  package:
+    needs: [launcher, app]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/upload-artifact/merge@v4
+        with:
+          name: craftoffice-windows-x64
+          pattern: app-*
