@@ -100,8 +100,18 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          mkdir -p out
-          cp appsrc/target/release/${{ matrix.app }}.exe out/
+          A="${{ matrix.app }}"
+          case "$A" in
+            craftoffice) N="CraftOffice" ;; wordcraft) N="CraftOffice Writer" ;; gridcraft) N="CraftOffice Sheets" ;;
+            deckcraft) N="CraftOffice Slides" ;; designcraft) N="CraftOffice Layout" ;; pdfcraft) N="CraftOffice PDF" ;;
+            photocraft) N="CraftOffice Photo" ;; vectorcraft) N="CraftOffice Vector" ;; lightcraft) N="CraftOffice Darkroom" ;;
+            filmcraft) N="CraftOffice Video" ;; effectcraft) N="CraftOffice Motion" ;; soundcraft) N="CraftOffice Audio" ;;
+            anicraft) N="CraftOffice Animation" ;; figcraft) N="CraftOffice Prototype" ;; cadcraft) N="CraftOffice CAD" ;;
+            materialcraft) N="CraftOffice Material" ;; texturecraft) N="CraftOffice Texture" ;; craft-anything) N="CraftOffice Workshop" ;;
+          esac
+          mkdir -p "out/$N"
+          cp "appsrc/target/release/$A.exe" "out/$N/$N.exe"
+          printf '{"id":"%s","version":null,"exe":"%s.exe"}' "$A" "$N" > "out/$N/craftoffice.json"
       - uses: actions/upload-artifact@v4
         with:
           name: app-${{ matrix.app }}
@@ -116,3 +126,4 @@ jobs:
         with:
           name: craftoffice-windows-x64
           pattern: app-*
+
