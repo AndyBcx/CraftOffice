@@ -98,6 +98,8 @@ jobs:
             git:*) fetch "${{ matrix.app }}" appsrc "${SRC#git:}"
                    git -C appsrc apply --whitespace=nowarn "$W/patches/${{ matrix.app }}.patch" ;;
           esac
+          # CraftOffice-bővítések (extra/<app>.patch)
+          if [ -f "extra/${{ matrix.app }}.patch" ]; then (cd appsrc && git apply --whitespace=nowarn "$W/extra/${{ matrix.app }}.patch"); fi
           # AniCraft: a CraftOffice mod-sorok a belső attribútumok mögé
           [ -f appsrc/src/main.rs ] && perl -0pi -e 's/(mod craftoffice_brand;\r?\nmod craftoffice_i18n;\r?\n)(.*?#!\[cfg_attr\(target_arch = "wasm32", allow\(dead_code\)\)\]\r?\n)/$2$1/s' appsrc/src/main.rs || true
           # a helyi gépen használt útvonalak cseréje a GitHub gép útvonalára
