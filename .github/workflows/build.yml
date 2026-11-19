@@ -3,9 +3,8 @@ name: build
 # CraftOffice: a launcher és a 16 alkalmazás Windows-os fordítása a GitHub gépein (MSVC),
 # ugyanúgy, mint a Vormantis. Indítás: Actions → build → Run workflow (vagy push a main ágra).
 
+# Csak kézzel indul (Actions → build → Run workflow), feltöltéskor nem.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       only:
