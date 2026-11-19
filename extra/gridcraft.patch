@@ -1,0 +1,368 @@
+diff --git a/crates/engine/src/cmd/file.rs b/crates/engine/src/cmd/file.rs
+index aafb085..70753d4 100644
+--- a/crates/engine/src/cmd/file.rs
++++ b/crates/engine/src/cmd/file.rs
+@@ -11,6 +11,8 @@ pub fn specs() -> Vec<CommandSpec> {
+         cmd!(noundo "file.open", "Open…", ["File"], Some("Cmd+O"), "{path} | {name, base64}, plus {password} for a password-protected workbook and {csvAsText?: bool} to keep every csv/tsv/txt field as text, with no number or date conversion (xlsx, xlsm, xls import, xlsb and ods data import, csv, tsv, txt, json)", always, open),
+         cmd!(noundo "file.save", "Save", ["File"], Some("Cmd+S"), "{path?} (xlsx by default; .csv/.tsv/.json/.html/.pdf by extension)", has_doc, save),
+         cmd!(noundo "file.saveAs", "Save As…", ["File"], Some("Cmd+Shift+S"), "{path} (.xlsx, .csv, .tsv, .json, .html, or .pdf: a PDF of the active sheet)", has_doc, save_as),
++        // CraftOffice: File › Info › Protect Workbook › Encrypt with Password.
++        cmd!(noundo "file.encrypt", "Encrypt with Password", ["File"], None, "{password: string, confirmPassword?: string (must match), or password: null | \"\" to save without a password} → {encrypted} (.xlsx files are saved encrypted with it: Agile, AES-256)", has_doc, encrypt),
+         cmd!(query "file.saveBytes", "Encode Workbook", [], None, "{format?: xlsx|csv|tsv|json|html} → {base64}", has_doc, save_bytes),
+         cmd!(noundo "file.close", "Close", ["File"], Some("Cmd+W"), "{force?: bool, document?: bool} (closes the active window, or with `document` the workbook and all its windows; the workbook closes with its last window)", has_doc, close),
+         cmd!(noundo "file.exportCsv", "Export as CSV", ["File", "Export"], None, "{path, sheet?, values?: bool} → {path, bytes}: writes the cells as displayed, like Excel's Save As CSV; `values: true` writes raw values instead (full-precision numbers, ISO 8601 dates and times, TRUE/FALSE)", has_doc, |s, p| export(s, p, "csv")),
+@@ -78,7 +80,9 @@ fn open(s: &mut Session, p: &Json) -> Result<Json> {
+     // An import has no save target: ordinary Save must ask for a new destination. Neither does a
+     // workbook decrypted with its password, so Save never replaces the encrypted original with
+     // an unprotected copy.
+-    let path = str_param(p, "path").filter(|_| !imported && !encrypted).map(str::to_string);
++    // CraftOffice: like Excel, a workbook opened with its password is saved back to its file
++    // encrypted with the same password.
++    let path = str_param(p, "path").filter(|_| !imported).map(str::to_string);
+     // Replace an untouched blank Book1 like Excel does.
+     if s.documents().len() == 1
+         && s.active().is_some_and(|d| d.path.is_none() && !d.is_dirty() && d.undo.is_empty() && d.wb.sheets.iter().all(|sh| sh.cells.is_empty()))
+@@ -87,6 +91,9 @@ fn open(s: &mut Session, p: &Json) -> Result<Json> {
+     }
+     // Someone else may have made the file: its active content asks before it runs.
+     let mut doc = DocState::new(wb, path, title, crate::Trust::FromFile);
++    if encrypted {
++        doc.password = str_param(p, "password").filter(|pw| !pw.is_empty()).map(str::to_string);
++    }
+     if crate::io::FileKind::from_path(&name).is_none() && gridcraft_xlsx::sniff(&bytes) == gridcraft_xlsx::Format::Xlsx {
+         doc.content_kind = Some(crate::io::FileKind::Xlsx);
+     }
+@@ -129,6 +136,11 @@ fn save(s: &mut Session, p: &Json) -> Result<Json> {
+         Some(kind) => crate::io::save_bytes_as(wb, &path, kind)?,
+         None => crate::io::save_bytes(wb, &path)?,
+     };
++    // CraftOffice: an .xlsx of a workbook with a password is written encrypted with it.
++    let bytes = match (&d.password, kind) {
++        (Some(pw), Some(crate::io::FileKind::Xlsx) | None) => gridcraft_xlsx::encrypt(&bytes, pw).map_err(|e| bad("file.save", e))?,
++        _ => bytes,
++    };
+     crate::io::write_file(&path, &bytes)?;
+     // Only a full-fidelity format clears the dirty flag and becomes the document's file.
+     if matches!(kind, Some(crate::io::FileKind::Xlsx | crate::io::FileKind::Json)) {
+@@ -141,10 +153,44 @@ fn save(s: &mut Session, p: &Json) -> Result<Json> {
+         }
+         d.saved = d.wb.clone();
+         d.path = Some(path.clone());
++        if matches!(kind, Some(crate::io::FileKind::Xlsx)) {
++            d.password_changed = false;
++        }
+     }
+     Ok(json!({"path": path, "bytes": bytes.len()}))
+ }
+ 
++/// CraftOffice: File › Info › Protect Workbook › Encrypt with Password. Sets (or with `null` or
++/// an empty string removes) the password the next `.xlsx` saves are encrypted with.
++fn encrypt(s: &mut Session, p: &Json) -> Result<Json> {
++    let password = match p.get("password") {
++        None => {
++            s.ui_requests.push(crate::UiRequest::Dialog("encryptPassword".into(), json!({})));
++            return ok();
++        }
++        Some(Json::Null) => None,
++        Some(Json::String(pw)) if pw.is_empty() => None,
++        Some(Json::String(pw)) => Some(pw.clone()),
++        Some(_) => return Err(bad("file.encrypt", "`password` must be a string, or null to remove the password")),
++    };
++    if let (Some(pw), Some(confirm)) = (&password, str_param(p, "confirmPassword"))
++        && pw != confirm
++    {
++        return Err(bad("file.encrypt", "The passwords don't match. Type the same password in both boxes."));
++    }
++    if let Some(pw) = &password
++        && pw.chars().count() > 255
++    {
++        return Err(bad("file.encrypt", "The password can have at most 255 characters."));
++    }
++    let d = s.doc_mut()?;
++    if d.password != password {
++        d.password = password;
++        d.password_changed = true;
++    }
++    Ok(json!({"encrypted": d.password.is_some()}))
++}
++
+ fn save_as(s: &mut Session, p: &Json) -> Result<Json> {
+     if str_param(p, "path").is_none() {
+         s.ui_requests.push(crate::UiRequest::Dialog("saveAs".into(), json!({})));
+diff --git a/crates/engine/src/io.rs b/crates/engine/src/io.rs
+index 184c4fd..8644dad 100644
+--- a/crates/engine/src/io.rs
++++ b/crates/engine/src/io.rs
+@@ -56,7 +56,7 @@ pub const PASSWORD_REQUIRED: &str = "is password-protected. Enter its password t
+ /// The error for a wrong password contains this.
+ pub const WRONG_PASSWORD: &str = "The password is incorrect.";
+ /// The first open warning of a workbook decrypted with its password.
+-pub const DECRYPTED_NOTICE: &str = "This workbook was password-protected. GridCraft saves it without the password.";
++pub const DECRYPTED_NOTICE: &str = "This workbook is password-protected. GridCraft saves it with the same password.";
+ 
+ /// Parses a file's bytes into a workbook. `name` picks the format by extension when the bytes
+ /// don't say. An encrypted workbook needs [`open_bytes_with_password`].
+diff --git a/crates/engine/src/lib.rs b/crates/engine/src/lib.rs
+index 99fb64e..6f5b6a4 100644
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -224,6 +224,12 @@ pub struct DocState {
+     /// The references `edit.goTo` with `record: true` went to in this document, newest first,
+     /// without names, each area written with its sheet (`Sheet1!B14:C22,Sheet1!F19:G30`).
+     pub go_to_recent: Vec<String>,
++    /// CraftOffice: File › Info › Protect Workbook › Encrypt with Password. Save writes an `.xlsx`
++    /// encrypted with it (Agile, AES-256), as Excel does; a workbook opened with its password
++    /// keeps it. Never written into the workbook itself, never reported back.
++    pub password: Option<String>,
++    /// CraftOffice: the password changed since the last save, so the workbook needs saving.
++    pub password_changed: bool,
+ }
+ 
+ static NEXT_UID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+@@ -361,10 +367,12 @@ impl DocState {
+             touched: None,
+             edits: None,
+             go_to_recent: vec![],
++            password: None,
++            password_changed: false,
+         }
+     }
+     pub fn is_dirty(&self) -> bool {
+-        !Arc::ptr_eq(&self.wb, &self.saved)
++        self.password_changed || !Arc::ptr_eq(&self.wb, &self.saved)
+     }
+     pub fn sheet_index(&self) -> usize {
+         self.wb.active_sheet()
+diff --git a/crates/engine/src/tests.rs b/crates/engine/src/tests.rs
+index 5d236fe..9e056b3 100644
+--- a/crates/engine/src/tests.rs
++++ b/crates/engine/src/tests.rs
+@@ -5148,12 +5148,13 @@ fn encrypted_workbooks_open_with_their_password() {
+     }
+     assert!(s.documents().is_empty());
+ 
+-    // The right password opens it: no save path, the file name as title, the notice first.
++    // The right password opens it: the file name as title, the notice first, and (CraftOffice)
++    // the password kept for the next save.
+     let r = open(&mut s, Some(PW)).unwrap();
+     assert_eq!(r["warnings"][0], crate::io::DECRYPTED_NOTICE);
+     assert_eq!(r["title"], "Secret.xlsx");
+     assert_eq!(v(&s, "A1"), Value::Number(42.0));
+-    assert_eq!(s.doc().unwrap().path, None);
++    assert_eq!(s.doc().unwrap().password.as_deref(), Some(PW));
+     // The notice belongs in the info bar, not a message box.
+     assert!(!s.take_ui_requests().iter().any(|r| matches!(r, crate::UiRequest::Message(_))));
+     let journal = serde_json::to_string(&s.journal).unwrap();
+@@ -5162,23 +5163,67 @@ fn encrypted_workbooks_open_with_their_password() {
+ 
+ #[test]
+ #[cfg(not(target_arch = "wasm32"))]
+-fn a_decrypted_workbook_never_overwrites_its_encrypted_original() {
++fn an_encrypted_workbook_saves_back_with_its_password() {
++    // CraftOffice: as in Excel, Save writes the workbook back to its file, encrypted again with
++    // the password it was opened with.
+     const PW: &str = "synthetic-pw-5522";
+     let nonce = unique_nonce();
+     let dir = std::env::temp_dir().join(format!("gridcraft-encrypted-{}-{nonce}", std::process::id()));
+     std::fs::create_dir(&dir).unwrap();
+     let path = dir.join("Secret.xlsx");
+-    let bytes = encrypted_book(PW);
+-    std::fs::write(&path, &bytes).unwrap();
++    std::fs::write(&path, encrypted_book(PW)).unwrap();
+ 
+     let mut s = s();
+     s.execute("file.open", json!({"path": path, "password": PW})).unwrap();
+-    assert_eq!(s.doc().unwrap().path, None);
++    assert_eq!(s.doc().unwrap().path.as_deref(), path.to_str());
+     s.take_ui_requests();
+     s.execute("cell.set", json!({"cell": "A1", "input": "43"})).unwrap();
+     s.execute("file.save", json!({})).unwrap();
+-    assert!(s.take_ui_requests().iter().any(|r| matches!(r, crate::UiRequest::Dialog(name, _) if name == "saveAs")));
+-    assert_eq!(std::fs::read(&path).unwrap(), bytes, "the encrypted original is untouched");
++    let saved = std::fs::read(&path).unwrap();
++    assert_eq!(gridcraft_xlsx::sniff(&saved), gridcraft_xlsx::Format::Encrypted, "still encrypted");
++    assert!(gridcraft_xlsx::decrypt(&saved, "wrong").is_err());
++    let mut t = crate::tests::s();
++    t.execute("file.open", json!({"path": path, "password": PW})).unwrap();
++    assert_eq!(v(&t, "A1"), Value::Number(43.0));
++    std::fs::remove_dir_all(dir).unwrap();
++}
++
++#[test]
++#[cfg(not(target_arch = "wasm32"))]
++fn encrypt_with_password_sets_changes_and_removes_the_password() {
++    const PW: &str = "synthetic-pw-7781";
++    let nonce = unique_nonce();
++    let dir = std::env::temp_dir().join(format!("gridcraft-encrypt-{}-{nonce}", std::process::id()));
++    std::fs::create_dir(&dir).unwrap();
++    let path = dir.join("Book.xlsx");
++    let mut s = s();
++    s.execute("cell.set", json!({"cell": "A1", "input": "7"})).unwrap();
++    // No password param: the dialog asks for it.
++    s.execute("file.encrypt", json!({})).unwrap();
++    assert!(s.take_ui_requests().iter().any(|r| matches!(r, crate::UiRequest::Dialog(name, _) if name == "encryptPassword")));
++    // The two boxes must match, and nothing changes when they don't.
++    assert!(s.execute("file.encrypt", json!({"password": PW, "confirmPassword": "other"})).is_err());
++    assert!(s.doc().unwrap().password.is_none());
++    let r = s.execute("file.encrypt", json!({"password": PW, "confirmPassword": PW})).unwrap();
++    assert_eq!(r["encrypted"], true);
++    s.execute("file.save", json!({"path": path})).unwrap();
++    assert!(!s.doc().unwrap().is_dirty());
++    let saved = std::fs::read(&path).unwrap();
++    assert_eq!(gridcraft_xlsx::sniff(&saved), gridcraft_xlsx::Format::Encrypted);
++    assert!(gridcraft_xlsx::decrypt(&saved, PW).is_ok());
++    // A CSV copy is never encrypted.
++    let csv = dir.join("Book.csv");
++    s.execute("file.save", json!({"path": csv})).unwrap();
++    assert!(std::fs::read_to_string(&csv).unwrap().contains('7'));
++    // Removing the password marks the workbook changed; the next save is a plain .xlsx.
++    s.execute("file.save", json!({"path": path})).unwrap();
++    s.execute("file.encrypt", json!({"password": null})).unwrap();
++    assert!(s.doc().unwrap().is_dirty());
++    s.execute("file.save", json!({})).unwrap();
++    assert_eq!(gridcraft_xlsx::sniff(&std::fs::read(&path).unwrap()), gridcraft_xlsx::Format::Xlsx);
++    assert!(!s.doc().unwrap().is_dirty());
++    let journal = serde_json::to_string(&s.journal).unwrap();
++    assert!(!journal.contains(PW), "the password never reaches the journal");
+     std::fs::remove_dir_all(dir).unwrap();
+ }
+ 
+diff --git a/crates/ui-egui/src/backstage.rs b/crates/ui-egui/src/backstage.rs
+index ca115f7..e4cefe0 100644
+--- a/crates/ui-egui/src/backstage.rs
++++ b/crates/ui-egui/src/backstage.rs
+@@ -612,6 +612,7 @@ fn info(app: &mut SheetApp, ui: &mut Ui, bs: &mut Backstage) {
+     let path = d.path.clone();
+     let sheets = d.wb.sheets.len();
+     let protected = d.wb.protected_structure;
++    let encrypted = d.password.is_some();
+     let current: Vec<String> = {
+         let pr = &d.wb.props;
+         vec![pr.title.clone(), pr.subject.clone(), pr.author.clone(), pr.company.clone(), pr.keywords.clone(), pr.description.clone()]
+@@ -644,6 +645,28 @@ fn info(app: &mut SheetApp, ui: &mut Ui, bs: &mut Backstage) {
+             dim(ui, lang.tr(text));
+         });
+     });
++    // CraftOffice: Encrypt with Password (Excel's File › Info › Protect Workbook).
++    ui.add_space(14.0);
++    ui.horizontal(|ui| {
++        let label = if encrypted { "Change Password" } else { "Encrypt with Password" };
++        if square_button(ui, Icon::Lock, lang.tr(label)).clicked() {
++            app.open_dialog("encryptPassword", json!({}));
++        }
++        ui.add_space(12.0);
++        ui.vertical(|ui| {
++            ui.add_space(14.0);
++            ui.label(RichText::new(lang.tr("Encrypt with Password")).font(theme::ui_bold(13.5)).color(t.text));
++            let text = if encrypted {
++                "A password is required to open this workbook."
++            } else {
++                "Anyone can open this workbook. Encrypt it with a password to keep it private."
++            };
++            dim(ui, lang.tr(text));
++            if encrypted && ui.link(lang.tr("Remove Password")).clicked() {
++                app.run_or_alert("file.encrypt", json!({"password": null}));
++            }
++        });
++    });
+     ui.add_space(22.0);
+     section(ui, lang, "Properties");
+     egui::Grid::new("backstage_props").num_columns(2).spacing(vec2(18.0, 8.0)).show(ui, |ui| {
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index 0e61118..6d07287 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -437,6 +437,18 @@ impl Dialog {
+                 ],
+                 json!({"on": true}),
+             ),
++            // CraftOffice: File › Info › Protect Workbook › Encrypt with Password.
++            "encryptPassword" => Dialog::form(
++                "encryptPassword",
++                "Encrypt Workbook",
++                "file.encrypt",
++                vec![
++                    Note("Encrypt the contents of this file. If you lose or forget the password, it cannot be recovered.".into()),
++                    Password { key: "password", label: "Password:" },
++                    Password { key: "confirmPassword", label: "Reenter password:" },
++                ],
++                json!({"password": "", "confirmPassword": ""}),
++            ),
+             "unprotectWorkbook" => Dialog::form(
+                 "unprotectWorkbook",
+                 "Unprotect Workbook",
+diff --git a/crates/ui-egui/src/i18n/hu.rs b/crates/ui-egui/src/i18n/hu.rs
+index 5a1cb7e..24c3b28 100644
+--- a/crates/ui-egui/src/i18n/hu.rs
++++ b/crates/ui-egui/src/i18n/hu.rs
+@@ -1316,6 +1316,16 @@ pub(super) fn translate(text: &str) -> Option<&'static str> {
+         "White - Green" => "Fehér - zöld",
+         "White - Red" => "Fehér - piros",
+         "Win/Loss" => "Nyereség/veszteség",
++        // CraftOffice: Encrypt with Password
++        "Encrypt Workbook" => "Munkafüzet titkosítása",
++        "Reenter password:" => "Jelszó újra:",
++        "Change Password" => "Jelszó módosítása",
++        "Encrypt with Password" => "Titkosítás jelszóval",
++        "Remove Password" => "Jelszó eltávolítása",
++        "A password is required to open this workbook." => "A munkafüzet megnyitásához jelszó szükséges.",
++        "Anyone can open this workbook. Encrypt it with a password to keep it private." => "Bárki megnyithatja ezt a munkafüzetet. Titkosítsd jelszóval, hogy más ne lássa.",
++        "Encrypt the contents of this file. If you lose or forget the password, it cannot be recovered." => "A fájl tartalmának titkosítása. Ha elveszíted vagy elfelejted a jelszót, nem lehet visszaállítani.",
++        "The passwords don't match. Type the same password in both boxes." => "A két jelszó nem egyezik. Írd be ugyanazt a jelszót mindkét mezőbe.",
+         _ => return None,
+     })
+ }
+diff --git a/crates/ui-egui/src/i18n/ro.rs b/crates/ui-egui/src/i18n/ro.rs
+index 9cdbded..05094f5 100644
+--- a/crates/ui-egui/src/i18n/ro.rs
++++ b/crates/ui-egui/src/i18n/ro.rs
+@@ -1175,6 +1175,16 @@ pub(super) fn translate(text: &str) -> Option<&'static str> {
+         "\\@char has non-numeric argument {argument}" => "\\@char are un argument nenumeric {argument}",
+         "\\@char with invalid code point {code}" => "\\@char cu punct de cod nevalid {code}",
+         "Invalid environment name character: {character}" => "Caracter nevalid în numele mediului: {character}",
++        // CraftOffice: Encrypt with Password
++        "Encrypt Workbook" => "Criptare registru",
++        "Reenter password:" => "Reintroduceți parola:",
++        "Change Password" => "Modificare parolă",
++        "Encrypt with Password" => "Criptare cu parolă",
++        "Remove Password" => "Eliminare parolă",
++        "A password is required to open this workbook." => "Este necesară o parolă pentru a deschide acest registru.",
++        "Anyone can open this workbook. Encrypt it with a password to keep it private." => "Oricine poate deschide acest registru. Criptați-l cu o parolă pentru a-l păstra privat.",
++        "Encrypt the contents of this file. If you lose or forget the password, it cannot be recovered." => "Criptați conținutul acestui fișier. Dacă pierdeți sau uitați parola, aceasta nu poate fi recuperată.",
++        "The passwords don't match. Type the same password in both boxes." => "Parolele nu se potrivesc. Tastați aceeași parolă în ambele casete.",
+         _ => return None,
+     })
+ }
+diff --git a/crates/xlsx/src/crypto.rs b/crates/xlsx/src/crypto.rs
+index 7103086..7c45c0f 100644
+--- a/crates/xlsx/src/crypto.rs
++++ b/crates/xlsx/src/crypto.rs
+@@ -44,3 +44,15 @@ pub fn check_encryption(bytes: &[u8]) -> Result<(), DecryptError> {
+ pub(crate) fn is_encrypted(bytes: &[u8]) -> bool {
+     ["EncryptedPackage", "EncryptionInfo"].iter().any(|n| craft_cfb::has_entry_named(bytes, n, &craft_cfb::Limits::default()))
+ }
++
++/// CraftOffice: `package` (an `.xlsx` zip) as Excel stores it with a password: Agile encryption
++/// (AES-256, SHA-512, 100,000 spins) in a compound file with the data-spaces streams.
++pub fn encrypt(package: &[u8], password: &str) -> Result<Vec<u8>, String> {
++    if password.is_empty() {
++        return Err("The password is empty.".into());
++    }
++    if password.chars().count() > 255 {
++        return Err("The password can have at most 255 characters.".into());
++    }
++    craft_offcrypto::encrypt(package, password).map_err(|e| e.to_string())
++}
+diff --git a/crates/xlsx/src/lib.rs b/crates/xlsx/src/lib.rs
+index efd3861..b2dd4b6 100644
+--- a/crates/xlsx/src/lib.rs
++++ b/crates/xlsx/src/lib.rs
+@@ -46,7 +46,7 @@ mod tests;
+ use gridcraft_core::DateSystem;
+ use gridcraft_model::Workbook;
+ 
+-pub use crypto::{DecryptError, check_encryption, decrypt};
++pub use crypto::{DecryptError, check_encryption, decrypt, encrypt};
+ pub use csv::{MAX_CSV_BYTES, decode_text, read_csv, read_csv_with_report, write_csv, write_csv_limited};
+ pub use ods::read_ods;
+ pub use package::MAX_PART;
