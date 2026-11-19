@@ -1,0 +1,525 @@
+diff --git a/apps/deckcraft/Cargo.toml b/apps/deckcraft/Cargo.toml
+index d9b8594..35a901f 100644
+--- a/apps/deckcraft/Cargo.toml
++++ b/apps/deckcraft/Cargo.toml
+@@ -33,6 +33,8 @@ rfd = { workspace = true }
+ arboard = { workspace = true, features = ["image-data"] }
+ image = { workspace = true }
+ cpal = "0.16"
++# CraftOffice: direct printing from File › Print
++craft-print = { git = "https://github.com/storytold/craft-libs", rev = "6e03f65bf45181db77ba6229716e6624db9eb25b" }
+ 
+ [target.'cfg(target_os = "macos")'.dependencies]
+ # Finder double-click, Open With, Dock drops and `open -a DeckCraft deck.pptx` arrive as a
+diff --git a/apps/deckcraft/src/craftoffice_i18n/hu.tsv b/apps/deckcraft/src/craftoffice_i18n/hu.tsv
+index 5d6a05f..e8f905a 100644
+--- a/apps/deckcraft/src/craftoffice_i18n/hu.tsv
++++ b/apps/deckcraft/src/craftoffice_i18n/hu.tsv
+@@ -1996,3 +1996,15 @@ User Information	Felhasználói adatok
+ Width ({abbr}):	Szélesség ({abbr}):
+ {label} value	{label} értéke
+ {name} options	{name} beállításai
++Printer	Nyomtató
++Copies:	Példányszám:
++Print One Sided	Egyoldalas nyomtatás
++Print on Both Sides (flip on long edge)	Kétoldalas nyomtatás (hosszú él mentén)
++Print on Both Sides (flip on short edge)	Kétoldalas nyomtatás (rövid él mentén)
++Looking for printers…	Nyomtatók keresése…
++No printer found	Nem található nyomtató
++Refresh the printer list	Nyomtatólista frissítése
++Open as PDF instead	Megnyitás PDF-ként
++Choose a printer first.	Előbb válasszon nyomtatót.
++Sending the presentation to the printer…	A bemutató küldése a nyomtatóra…
++Sent to the printer.	Elküldve a nyomtatóra.
+diff --git a/apps/deckcraft/src/craftoffice_i18n/ro.tsv b/apps/deckcraft/src/craftoffice_i18n/ro.tsv
+index 1d66580..22e3086 100644
+--- a/apps/deckcraft/src/craftoffice_i18n/ro.tsv
++++ b/apps/deckcraft/src/craftoffice_i18n/ro.tsv
+@@ -1996,3 +1996,15 @@ User Information	Informații utilizator
+ Width ({abbr}):	Lățime ({abbr}):
+ {label} value	Valoare {label}
+ {name} options	Opțiuni {name}
++Printer	Imprimantă
++Copies:	Copii:
++Print One Sided	Imprimare pe o singură față
++Print on Both Sides (flip on long edge)	Imprimare față-verso (întoarcere pe latura lungă)
++Print on Both Sides (flip on short edge)	Imprimare față-verso (întoarcere pe latura scurtă)
++Looking for printers…	Se caută imprimante…
++No printer found	Nu s-a găsit nicio imprimantă
++Refresh the printer list	Reîmprospătare listă imprimante
++Open as PDF instead	Deschidere ca PDF
++Choose a printer first.	Alegeți mai întâi o imprimantă.
++Sending the presentation to the printer…	Prezentarea se trimite la imprimantă…
++Sent to the printer.	Trimis la imprimantă.
+diff --git a/apps/deckcraft/src/main.rs b/apps/deckcraft/src/main.rs
+index 7e4e07a..f1f0e96 100644
+--- a/apps/deckcraft/src/main.rs
++++ b/apps/deckcraft/src/main.rs
+@@ -108,6 +108,8 @@ fn save_prefs(app: &SlideApp) {
+     }
+ }
+ 
++mod printing;
++
+ /// The desktop services. `native_wayland`: the window is a Wayland client (not Xwayland).
+ fn services(native_wayland: bool) -> Services {
+     // On native Wayland, egui-winit owns the clipboard through winit's data device, which carries
+@@ -141,6 +143,8 @@ fn services(native_wayland: bool) -> Services {
+         clipboard_html: pasteboard.then(|| Box::new(pasteboard::html) as Box<dyn FnMut() -> Option<String>>),
+         clipboard_set_html: pasteboard.then(|| Box::new(pasteboard::set_html) as Box<dyn FnMut(&str, &str) -> bool>),
+         // Media is mixed and clocked by the output device; `DECKCRAFT_NO_AUDIO` plays silently.
++        printers: Some(Box::new(printing::discover)),
++        print_submit: Some(Box::new(printing::submit)),
+         audio_out: std::env::var_os("DECKCRAFT_NO_AUDIO")
+             .is_none()
+             .then(|| Box::new(audio::CpalOut::default()) as Box<dyn deckcraft_media::AudioOut>),
+@@ -288,7 +292,7 @@ fn main() -> eframe::Result {
+     let apple_events = apple_events::AppleEvents::install();
+     #[cfg(target_os = "macos")]
+     let apple_events = &apple_events;
+-    eframe::run_native(
++    let result = eframe::run_native(
+         "DeckCraft",
+         options,
+         Box::new(move |cc| {
+@@ -331,7 +335,10 @@ fn main() -> eframe::Result {
+                 apple_events.connect(&cc.egui_ctx),
+             )))
+         }),
+-    )
++    );
++    // CraftOffice: let a print job reach the spooler before the process ends.
++    printing::finish_pending_jobs();
++    result
+ }
+ 
+ #[cfg(test)]
+diff --git a/apps/deckcraft/src/printing.rs b/apps/deckcraft/src/printing.rs
+new file mode 100644
+index 0000000..43c3cae
+--- /dev/null
++++ b/apps/deckcraft/src/printing.rs
+@@ -0,0 +1,77 @@
++//! CraftOffice: the desktop spooler for File › Print (craft-print). Discovery and submission
++//! never run on the UI thread.
++use deckcraft_ui_egui::{PrintJob, PrinterInfo};
++use std::sync::mpsc::{Receiver, channel};
++
++/// Lists the system printers on a background thread.
++pub fn discover() -> Receiver<Vec<PrinterInfo>> {
++    let (sender, receiver) = channel();
++    let _ = std::thread::Builder::new().name("print-discovery".into()).spawn(move || {
++        let printers = craft_print::printers()
++            .into_iter()
++            .map(|p| PrinterInfo { name: p.name, label: p.description, default: p.default })
++            .collect();
++        let _ = sender.send(printers);
++    });
++    receiver
++}
++
++// Workers stay reachable until shutdown: dropping a JoinHandle would let the process exit kill
++// PowerShell/CUPS before it hands the job to the spooler.
++static JOBS: std::sync::Mutex<Vec<std::thread::JoinHandle<()>>> = std::sync::Mutex::new(Vec::new());
++
++pub fn finish_pending_jobs() {
++    let workers = std::mem::take(&mut *JOBS.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
++    for worker in workers {
++        let _ = worker.join();
++    }
++}
++
++/// The craft-print job for a [`PrintJob`].
++fn job(j: &PrintJob) -> craft_print::Job {
++    craft_print::Job {
++        printer: Some(j.printer.clone()),
++        copies: j.copies.clamp(1, 999),
++        duplex: Some(match j.duplex {
++            1 => craft_print::Duplex::LongEdge,
++            2 => craft_print::Duplex::ShortEdge,
++            _ => craft_print::Duplex::Off,
++        }),
++        grayscale: j.grayscale,
++        scaling: craft_print::Scaling::ShrinkToFit,
++        title: if j.title.is_empty() { "CraftOffice Slides".into() } else { j.title.clone() },
++        ..Default::default()
++    }
++}
++
++/// Hands the PDF to the spooler on a background thread.
++pub fn submit(pdf: Vec<u8>, j: PrintJob) -> Receiver<Result<(), String>> {
++    let (sender, receiver) = channel();
++    let job = job(&j);
++    let worker = std::thread::Builder::new().name("print-submit".into()).spawn(move || {
++        let _ = sender.send(craft_print::submit(&pdf, &job).map(|_| ()).map_err(|e| e.to_string()));
++    });
++    if let Ok(worker) = worker {
++        let mut jobs = JOBS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
++        jobs.retain(|w| !w.is_finished());
++        jobs.push(worker);
++    }
++    receiver
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn job_maps_sides_copies_and_colour() {
++        let j = job(&PrintJob { printer: "P".into(), copies: 0, duplex: 1, grayscale: true, title: String::new() });
++        assert_eq!(j.printer.as_deref(), Some("P"));
++        assert_eq!(j.copies, 1);
++        assert_eq!(j.duplex, Some(craft_print::Duplex::LongEdge));
++        assert!(j.grayscale);
++        assert_eq!(j.title, "CraftOffice Slides");
++        let j = job(&PrintJob { printer: "P".into(), copies: 5000, duplex: 2, grayscale: false, title: "Deck".into() });
++        assert_eq!((j.copies, j.duplex, j.title.as_str()), (999, Some(craft_print::Duplex::ShortEdge), "Deck"));
++    }
++}
+diff --git a/crates/ui-egui/src/backstage.rs b/crates/ui-egui/src/backstage.rs
+index 8146697..2b8a1d8 100644
+--- a/crates/ui-egui/src/backstage.rs
++++ b/crates/ui-egui/src/backstage.rs
+@@ -21,6 +21,7 @@ use crate::theme::{self, Tokens};
+ mod files;
+ mod info;
+ mod print;
++mod direct_print;
+ 
+ pub use files::split_path;
+ use files::{home, new_page, open_page};
+diff --git a/crates/ui-egui/src/backstage/direct_print.rs b/crates/ui-egui/src/backstage/direct_print.rs
+new file mode 100644
+index 0000000..774df41
+--- /dev/null
++++ b/crates/ui-egui/src/backstage/direct_print.rs
+@@ -0,0 +1,210 @@
++//! CraftOffice: direct printing from File › Print to a system printer (through the host's
++//! spooler service), as PowerPoint and LibreOffice Impress do. The PDF the Print page already
++//! builds is handed to the printer; without the services (web) the page keeps its PDF route.
++//!
++//! The state lives on the UI thread only, so it stays out of [`super::Backstage`] (which is
++//! `Clone`) and survives closing and reopening the File tab.
++
++use std::cell::RefCell;
++use std::sync::mpsc::{Receiver, TryRecvError};
++use std::time::Duration;
++
++use super::{SlideApp, Ui, Value};
++use crate::services::{PrintJob, PrinterInfo};
++
++const SIDES: [(u8, &str); 3] = [
++    (0, "Print One Sided"),
++    (1, "Print on Both Sides (flip on long edge)"),
++    (2, "Print on Both Sides (flip on short edge)"),
++];
++
++struct State {
++    printers: Vec<PrinterInfo>,
++    loading: Option<Receiver<Vec<PrinterInfo>>>,
++    asked: bool,
++    printer: Option<String>,
++    copies: u32,
++    sides: u8,
++    grayscale: bool,
++    job: Option<Receiver<Result<(), String>>>,
++}
++
++impl Default for State {
++    fn default() -> Self {
++        State { printers: Vec::new(), loading: None, asked: false, printer: None, copies: 1, sides: 0, grayscale: false, job: None }
++    }
++}
++
++thread_local! {
++    static STATE: RefCell<State> = RefCell::new(State::default());
++}
++
++/// The host can print directly (desktop).
++pub fn available(app: &SlideApp) -> bool {
++    app.services.print_submit.is_some()
++}
++
++/// Start (or restart) printer discovery.
++fn discover(app: &mut SlideApp, s: &mut State) {
++    if let Some(list) = app.services.printers.as_mut() {
++        s.loading = Some(list());
++    }
++    s.asked = true;
++}
++
++/// Copies next to the Print button, as in PowerPoint.
++pub fn copies(ui: &mut Ui) {
++    STATE.with_borrow_mut(|s| {
++        ui.horizontal(|ui| {
++            let l = ui.label("Copies:");
++            ui.add(egui::DragValue::new(&mut s.copies).range(1..=999).speed(0.2)).labelled_by(l.id);
++        });
++    });
++}
++
++/// The Printer section: printer choice, sides and colour.
++pub fn settings(app: &mut SlideApp, ui: &mut Ui) {
++    STATE.with_borrow_mut(|s| {
++        if !s.asked {
++            discover(app, s);
++        }
++        if let Some(rx) = &s.loading {
++            match rx.try_recv() {
++                Ok(list) => {
++                    if s.printer.as_ref().is_none_or(|p| !list.iter().any(|x| &x.name == p)) {
++                        s.printer = list.iter().find(|p| p.default).or(list.first()).map(|p| p.name.clone());
++                    }
++                    s.printers = list;
++                    s.loading = None;
++                }
++                Err(TryRecvError::Empty) => ui.ctx().request_repaint_after(Duration::from_millis(200)),
++                Err(TryRecvError::Disconnected) => s.loading = None,
++            }
++        }
++        let label = |p: &PrinterInfo| if p.label.is_empty() { p.name.clone() } else { p.label.clone() };
++        let selected = match (&s.printer, s.loading.is_some()) {
++            (_, true) if s.printers.is_empty() => "Looking for printers…".to_string(),
++            (Some(name), _) => s.printers.iter().find(|p| &p.name == name).map_or_else(|| name.clone(), label),
++            (None, _) => "No printer found".to_string(),
++        };
++        ui.horizontal(|ui| {
++            craft_ui::ComboBox::from_id_salt("craftoffice_print_printer")
++                .width(206.0)
++                .selected_text(selected)
++                .show_ui(ui, |ui| {
++                    for p in &s.printers {
++                        let text = if p.default { format!("{} (default)", label(p)) } else { label(p) };
++                        if ui.selectable_label(s.printer.as_ref() == Some(&p.name), text).clicked() {
++                            s.printer = Some(p.name.clone());
++                        }
++                    }
++                })
++                .response
++                .widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, "Printer"));
++            if ui.small_button("⟳").on_hover_text("Refresh the printer list").clicked() {
++                discover(app, s);
++            }
++        });
++        ui.add_space(4.0);
++        let sides = SIDES.iter().find(|x| x.0 == s.sides).map_or(SIDES[0].1, |x| x.1);
++        craft_ui::ComboBox::from_id_salt("craftoffice_print_sides")
++            .width(240.0)
++            .selected_text(sides)
++            .show_ui(ui, |ui| {
++                for (id, text) in SIDES {
++                    if ui.selectable_label(s.sides == id, text).clicked() {
++                        s.sides = id;
++                    }
++                }
++            })
++            .response
++            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, "Sides"));
++        ui.add_space(4.0);
++        let colour = if s.grayscale { "Grayscale" } else { "Color" };
++        craft_ui::ComboBox::from_id_salt("craftoffice_print_colour")
++            .width(240.0)
++            .selected_text(colour)
++            .show_ui(ui, |ui| {
++                for (grey, text) in [(false, "Color"), (true, "Grayscale")] {
++                    if ui.selectable_label(s.grayscale == grey, text).clicked() {
++                        s.grayscale = grey;
++                    }
++                }
++            })
++            .response
++            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, "Color"));
++    });
++}
++
++/// Build the PDF for `params` and hand it to the chosen printer. `true` when a job left.
++pub fn print(app: &mut SlideApp, params: Value) -> bool {
++    let Some((title, doc)) = app.session.active().map(|d| (d.title(), d.doc.clone())) else { return false };
++    let job = STATE.with_borrow(|s| {
++        s.printer.clone().map(|printer| PrintJob { printer, copies: s.copies.clamp(1, 999), duplex: s.sides, grayscale: s.grayscale, title })
++    });
++    let Some(job) = job else {
++        app.set_status("Choose a printer first.");
++        return false;
++    };
++    let bytes = match deckcraft_engine::cmd::file::pdf_bytes(&doc, &params) {
++        Ok(bytes) => bytes,
++        Err(e) => {
++            app.set_status(format!("Couldn't prepare the pages to print: {e}"));
++            return false;
++        }
++    };
++    let Some(submit) = app.services.print_submit.as_mut() else { return false };
++    let rx = submit(bytes, job);
++    STATE.with_borrow_mut(|s| s.job = Some(rx));
++    app.set_status("Sending the presentation to the printer…");
++    true
++}
++
++/// Report how the last job went. Call every frame while the File tab shows.
++pub fn poll(app: &mut SlideApp, ui: &Ui) {
++    let done = STATE.with_borrow_mut(|s| {
++        let rx = s.job.as_ref()?;
++        match rx.try_recv() {
++            Ok(result) => {
++                s.job = None;
++                Some(result)
++            }
++            Err(TryRecvError::Empty) => {
++                ui.ctx().request_repaint_after(Duration::from_millis(250));
++                None
++            }
++            Err(TryRecvError::Disconnected) => {
++                s.job = None;
++                Some(Err("the print job stopped unexpectedly".into()))
++            }
++        }
++    });
++    match done {
++        Some(Ok(())) => app.set_status("Sent to the printer."),
++        Some(Err(e)) => app.set_status(format!("Couldn't print: {e}")),
++        None => {}
++    }
++}
++
++/// A job is still on its way to the spooler.
++pub fn busy() -> bool {
++    STATE.with_borrow(|s| s.job.is_some())
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn sides_cover_the_three_spooler_modes() {
++        let ids: Vec<u8> = SIDES.iter().map(|s| s.0).collect();
++        assert_eq!(ids, vec![0, 1, 2]);
++    }
++
++    #[test]
++    fn default_state_prints_one_colour_copy_one_sided() {
++        let s = State::default();
++        assert_eq!((s.copies, s.sides, s.grayscale), (1, 0, false));
++        assert!(s.printer.is_none() && s.job.is_none());
++    }
++}
+diff --git a/crates/ui-egui/src/backstage/print.rs b/crates/ui-egui/src/backstage/print.rs
+index db5d6b9..aa77a05 100644
+--- a/crates/ui-egui/src/backstage/print.rs
++++ b/crates/ui-egui/src/backstage/print.rs
+@@ -75,20 +75,46 @@ pub(super) fn print(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage) {
+         ui.vertical(|ui| {
+             ui.set_width(250.0);
+             let ok = slides.as_ref().is_ok_and(|s| !s.is_empty());
+-            if square_button(ui, Icon::Print, "Print", ok).clicked()
+-                && let Ok(s) = &slides
+-            {
+-                app.print_pdf(print_params(bs, s));
++            // CraftOffice: straight to the printer on the desktop; the PDF route stays as a link.
++            let direct = super::direct_print::available(app);
++            if direct {
++                super::direct_print::poll(app, ui);
+             }
++            ui.horizontal(|ui| {
++                if square_button(ui, Icon::Print, "Print", ok && !super::direct_print::busy()).clicked()
++                    && let Ok(s) = &slides
++                {
++                    if direct {
++                        super::direct_print::print(app, print_params(bs, s));
++                    } else {
++                        app.print_pdf(print_params(bs, s));
++                    }
++                }
++                if direct {
++                    ui.add_space(8.0);
++                    super::direct_print::copies(ui);
++                }
++            });
+             ui.add_space(6.0);
+-            dim(
+-                ui,
+-                if app.services.pick_save.is_some() {
+-                    "DeckCraft prints through a PDF: it opens in your PDF viewer, where you choose the printer."
+-                } else {
+-                    "DeckCraft prints through a PDF: it downloads, ready to print from your browser or PDF viewer."
+-                },
+-            );
++            if direct {
++                if ui.link("Open as PDF instead").clicked()
++                    && let Ok(s) = &slides
++                {
++                    app.print_pdf(print_params(bs, s));
++                }
++                ui.add_space(14.0);
++                heading(ui, "Printer");
++                super::direct_print::settings(app, ui);
++            } else {
++                dim(
++                    ui,
++                    if app.services.pick_save.is_some() {
++                        "DeckCraft prints through a PDF: it opens in your PDF viewer, where you choose the printer."
++                    } else {
++                        "DeckCraft prints through a PDF: it downloads, ready to print from your browser or PDF viewer."
++                    },
++                );
++            }
+             ui.add_space(14.0);
+             heading(ui, "Settings");
+             let scope = match bs.print_scope {
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index cad7941..5c826b1 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -72,7 +72,7 @@ pub use panels::notes;
+ pub use panels::selpane;
+ pub use panels::thumbs;
+ pub use ribbon::qat;
+-pub use services::{DownloadFn, HostSaveFn, Inbox, InboxEvent, InboxFile, OpenAsyncFn, PickFn, ReadFn, Services, WriteFn};
++pub use services::{DownloadFn, HostSaveFn, Inbox, InboxEvent, InboxFile, OpenAsyncFn, PickFn, PrintJob, PrintSubmitFn, PrinterInfo, PrintersFn, ReadFn, Services, WriteFn};
+ use state::{FilePlace, FilePurpose, ImeDescriptorKey, ImeDestination, ImeTerminalStamp};
+ pub use state::{RECENT_MAX, UiState, ViewMode, ZOOM_RANGE};
+ 
+diff --git a/crates/ui-egui/src/services.rs b/crates/ui-egui/src/services.rs
+index 0ca335a..798bb07 100644
+--- a/crates/ui-egui/src/services.rs
++++ b/crates/ui-egui/src/services.rs
+@@ -37,9 +37,37 @@ pub enum InboxEvent {
+ /// Files delivered asynchronously by the host (web file picker, dropped files).
+ pub type Inbox = std::sync::Arc<std::sync::Mutex<Vec<InboxEvent>>>;
+ 
++/// CraftOffice: a printer the system spooler offers for direct printing.
++#[derive(Clone, Debug, PartialEq)]
++pub struct PrinterInfo {
++    pub name: String,
++    pub label: String,
++    pub default: bool,
++}
++
++/// CraftOffice: one direct print job. `duplex`: 0 one-sided, 1 long edge, 2 short edge.
++#[derive(Clone, Debug, PartialEq)]
++pub struct PrintJob {
++    pub printer: String,
++    pub copies: u32,
++    pub duplex: u8,
++    pub grayscale: bool,
++    pub title: String,
++}
++
++/// Lists the printers on a background thread; the list arrives through the receiver.
++pub type PrintersFn = Box<dyn FnMut() -> std::sync::mpsc::Receiver<Vec<PrinterInfo>>>;
++
++/// Hands PDF bytes to the spooler on a background thread; the outcome arrives through the receiver.
++pub type PrintSubmitFn = Box<dyn FnMut(Vec<u8>, PrintJob) -> std::sync::mpsc::Receiver<Result<(), String>>>;
++
+ /// Platform services injected by the host (desktop or web).
+ #[derive(Default)]
+ pub struct Services {
++    /// CraftOffice: printer discovery for File › Print; absent on the web.
++    pub printers: Option<PrintersFn>,
++    /// CraftOffice: direct submission to a printer; absent on the web (Print then goes through a PDF).
++    pub print_submit: Option<PrintSubmitFn>,
+     /// Browser-owned presenter popup; absent on native hosts.
+     pub presenter: Option<Box<dyn crate::presenter::Host>>,
+     /// Open-file dialog for a purpose (`open`, `picture`, `audio`, `video`) → path.
