@@ -75,9 +75,10 @@ jobs:
             anicraft) N="CraftOffice Animation" ;; figcraft) N="CraftOffice Prototype" ;; cadcraft) N="CraftOffice CAD" ;;
             materialcraft) N="CraftOffice Material" ;; texturecraft) N="CraftOffice Texture" ;; craft-anything) N="CraftOffice Workshop" ;;
           esac
-          mkdir -p "out/$N"
-          strip -o "out/$N/$N" "appsrc/target/release/$A"
-          printf '{"id":"%s","version":null,"exe":"%s"}' "$A" "$N" > "out/$N/craftoffice.json"
+          V=$(cd appsrc && cargo pkgid -p "$A" | sed -E 's/.*[#@]([0-9][^#@]*)$/\1/')
+          mkdir -p "out/apps/$N"
+          strip -o "out/apps/$N/$N" "appsrc/target/release/$A"
+          printf '{"id":"%s","version":"%s","exe":"%s"}' "$A" "$V" "$N" > "out/apps/$N/craftoffice.json"
       - uses: actions/upload-artifact@v4
         if: ${{ !inputs.only || inputs.only == matrix.app }}
         with:
