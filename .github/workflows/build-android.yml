@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       web_run:
-        description: 'A build-web futás azonosítója (üresen: a legutóbbi befejezett)'
+        description: 'A build-web futás azonosítója (üresen: appenként a legutóbbi sikeres)'
         required: false
         default: ''
       only:
@@ -21,24 +21,7 @@ permissions:
   actions: read
 
 jobs:
-  find:
-    runs-on: ubuntu-latest
-    outputs:
-      run: ${{ steps.r.outputs.run }}
-    steps:
-      - id: r
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          R="${{ inputs.web_run }}"
-          if [ -z "$R" ]; then
-            R=$(gh run list -R "$GITHUB_REPOSITORY" -w build-web.yml --limit 20 --json databaseId,status -q '[.[] | select(.status == "completed")][0].databaseId')
-          fi
-          echo "build-web run: $R"
-          echo "run=$R" >> "$GITHUB_OUTPUT"
-
   apk:
-    needs: [find]
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     strategy:
@@ -65,12 +48,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         if: ${{ !inputs.only || inputs.only == matrix.app }}
+      - name: Which web build
+        id: w
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The given build-web run, or the newest one that built this app.
+          R="${{ inputs.web_run }}"
+          if [ -z "$R" ]; then
+            R=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=web-${{ matrix.app }}&per_page=1" -q '.artifacts[0].workflow_run.id')
+          fi
+          echo "build-web run for ${{ matrix.app }}: $R"
+          echo "run=$R" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         if: ${{ !inputs.only || inputs.only == matrix.app }}
         with:
           name: web-${{ matrix.app }}
           path: webpart
-          run-id: ${{ needs.find.outputs.run }}
+          run-id: ${{ steps.w.outputs.run }}
           github-token: ${{ github.token }}
       - uses: dtolnay/rust-toolchain@stable
         if: ${{ !inputs.only || inputs.only == matrix.app }}
