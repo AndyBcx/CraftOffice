@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CraftOffice</title>
+<meta name="theme-color" content="#14213d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/craftoffice-64.png">
+<link rel="apple-touch-icon" href="icons/craftoffice-256.png">
+<style>
+  :root { color-scheme: light dark; --bg:#f4f5f8; --fg:#14213d; --card:#fff; --dim:#5b6475; --gold:#d9a93c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1628; --fg:#e8ebf2; --card:#18223a; --dim:#9aa3b5; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; align-items:center; gap:14px; padding:22px 20px 10px; max-width:1100px; margin:0 auto; }
+  header img { width:44px; height:44px; }
+  h1 { font-size:24px; margin:0; flex:1; }
+  .lang button { border:1px solid var(--dim); background:transparent; color:var(--fg); border-radius:6px; padding:4px 9px; margin-left:4px; cursor:pointer; }
+  .lang button.on { background:var(--gold); color:#14213d; border-color:var(--gold); }
+  main { max-width:1100px; margin:0 auto; padding:10px 20px 30px; display:grid; gap:14px; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); }
+  a.app { display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px 10px; border-radius:14px; background:var(--card);
+          color:inherit; text-decoration:none; box-shadow:0 1px 3px rgba(0,0,0,.12); transition:transform .08s; }
+  a.app:hover, a.app:focus-visible { transform:translateY(-2px); outline:2px solid var(--gold); }
+  a.app img { width:72px; height:72px; }
+  a.app b { font-size:15px; text-align:center; }
+  a.app span { font-size:12.5px; color:var(--dim); text-align:center; }
+  a.app.missing { opacity:.45; pointer-events:none; }
+  footer { max-width:1100px; margin:0 auto; padding:0 20px 30px; color:var(--dim); font-size:13px; }
+  footer a { color:inherit; }
+</style>
+</head>
+<body>
+<header>
+  <img src="icons/craftoffice-128.png" alt="">
+  <h1>CraftOffice</h1>
+  <div class="lang"><button data-l="hu">HU</button><button data-l="ro">RO</button><button data-l="en">EN</button></div>
+</header>
+<main id="apps"></main>
+<footer><span id="foot"></span> · <a href="https://github.com/AndyBcx/CraftOffice">github.com/AndyBcx/CraftOffice</a></footer>
+<script>
+const APPS = [
+  ["wordcraft","Writer",{hu:"Szövegszerkesztő",ro:"Procesor de text",en:"Word processor"}],
+  ["gridcraft","Sheets",{hu:"Táblázatkezelő",ro:"Foi de calcul",en:"Spreadsheets"}],
+  ["deckcraft","Slides",{hu:"Bemutatók",ro:"Prezentări",en:"Presentations"}],
+  ["designcraft","Layout",{hu:"Kiadványszerkesztő",ro:"Tehnoredactare",en:"Page layout"}],
+  ["pdfcraft","PDF",{hu:"PDF-szerkesztő",ro:"Editor PDF",en:"PDF editor"}],
+  ["photocraft","Photo",{hu:"Képszerkesztő",ro:"Editare foto",en:"Photo editor"}],
+  ["vectorcraft","Vector",{hu:"Vektorgrafika",ro:"Grafică vectorială",en:"Vector graphics"}],
+  ["lightcraft","Darkroom",{hu:"Fotókönyvtár és RAW",ro:"Bibliotecă foto și RAW",en:"Photo library and raw"}],
+  ["filmcraft","Video",{hu:"Videóvágó",ro:"Editare video",en:"Video editor"}],
+  ["effectcraft","Motion",{hu:"Mozgógrafika és effektek",ro:"Grafică animată și efecte",en:"Motion graphics and effects"}],
+  ["soundcraft","Audio",{hu:"Hangszerkesztő",ro:"Editare audio",en:"Audio editor"}],
+  ["figcraft","Prototype",{hu:"Felülettervezés",ro:"Design de interfețe",en:"Interface design"}],
+  ["cadcraft","CAD",{hu:"Műszaki rajz",ro:"Desen tehnic",en:"Technical drawing"}],
+  ["materialcraft","Material",{hu:"Anyagszerkesztő",ro:"Editor de materiale",en:"Material editor"}],
+  ["texturecraft","Texture",{hu:"Textúrák",ro:"Texturi",en:"Textures"}],
+  ["craft-anything","Workshop",{hu:"Műhely",ro:"Atelier",en:"Workshop"}],
+];
+const FOOT = {hu:"Telepítés: Chrome menü › Alkalmazás telepítése. Az appok a böngészőben futnak, a fájlok a készüléken maradnak.",
+              ro:"Instalare: meniul Chrome › Instalați aplicația. Aplicațiile rulează în browser, fișierele rămân pe dispozitiv.",
+              en:"Install: Chrome menu › Install app. The apps run in the browser; your files stay on the device."};
+let present = null;
+function lang0() {
+  try { const s = localStorage.getItem("craftoffice-lang"); if (s) return s; } catch (e) {}
+  const n = (navigator.language || "").toLowerCase();
+  return n.startsWith("ro") ? "ro" : n.startsWith("hu") ? "hu" : "en";
+}
+function render(l) {
+  document.documentElement.lang = l;
+  document.querySelectorAll(".lang button").forEach(b => b.classList.toggle("on", b.dataset.l === l));
+  document.getElementById("foot").textContent = FOOT[l];
+  const m = document.getElementById("apps"); m.textContent = "";
+  for (const [id, name, desc] of APPS) {
+    const a = document.createElement("a");
+    a.className = "app" + (present && !present.includes(id) ? " missing" : "");
+    a.href = id + "/";
+    const img = document.createElement("img"); img.src = "icons/" + id + "-128.png"; img.alt = "";
+    const b = document.createElement("b"); b.textContent = "CraftOffice " + name;
+    const s = document.createElement("span"); s.textContent = desc[l];
+    a.append(img, b, s); m.append(a);
+  }
+}
+let L = lang0();
+document.querySelectorAll(".lang button").forEach(b => b.onclick = () => { L = b.dataset.l; try { localStorage.setItem("craftoffice-lang", L); } catch (e) {} render(L); });
+render(L);
+fetch("apps.json").then(r => r.ok ? r.json() : null).then(j => { if (j) { present = j; render(L); } }).catch(() => {});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>

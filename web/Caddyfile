@@ -1,0 +1,31 @@
+# CraftOffice web (Android, tablet, any browser). The site is static: /opt/craftoffice-web.
+# Copy this whole file into /etc/caddy/Caddyfile, uncomment ONE of the site blocks at the end (next to what is already
+# there, e.g. Vormantis' block, which stays as it is), then: sudo systemctl reload caddy
+
+(craftoffice_site) {
+    root * /opt/craftoffice-web
+    encode zstd gzip
+    # Threads and shared memory in the apps (effects, video, photo) need an isolated page.
+    header {
+        Cross-Origin-Opener-Policy same-origin
+        Cross-Origin-Embedder-Policy require-corp
+        Cross-Origin-Resource-Policy same-origin
+        X-Content-Type-Options nosniff
+    }
+    @static path *.wasm *.js *.css *.png *.woff2 *.ttf *.otf
+    header @static Cache-Control "no-cache"
+    file_server
+}
+
+# 1) Your own domain: Caddy fetches the HTTPS certificate by itself.
+# office.example.com {
+#     import craftoffice_site
+# }
+
+# 2) Home network, no domain: Caddy makes its own certificate on port 8444. Install Caddy's
+#    root CA on the phone once (/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt),
+#    or use Tailscale, which gives real HTTPS names.
+# :8444 {
+#     tls internal
+#     import craftoffice_site
+# }
