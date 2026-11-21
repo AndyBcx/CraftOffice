@@ -99,6 +99,8 @@ jobs:
           A="${{ matrix.app }}"
           mkdir -p android/app/src/main/assets
           cp -r "webpart/$A" android/app/src/main/assets/site
+          # Pre-compressed copies (x.js.gz next to x.js) clash in the APK and the engine serves the originals.
+          find android/app/src/main/assets/site -type f \( -name "*.gz" -o -name "*.br" \) | while read -r f; do if [ -f "${f%.*}" ]; then rm -f "$f"; fi; done
           ls android/app/src/main/assets/site | head
           du -sh android/app/src/main/assets/site
           pip install --quiet pillow
