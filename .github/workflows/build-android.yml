@@ -1,0 +1,142 @@
+name: build-android
+
+# CraftOffice on Android, as Vormantis: one APK per app. Each APK holds the app's WebAssembly build
+# (from the build-web workflow) and the engine library (android/engine, Rust), which serves it to the
+# app's WebView on 127.0.0.1, so the apps work offline. Run by hand: Actions → build-android → Run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      web_run:
+        description: 'A build-web futás azonosítója (üresen: a legutóbbi befejezett)'
+        required: false
+        default: ''
+      only:
+        description: 'Csak ez az app (pl. cadcraft); üresen mind'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  find:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.r.outputs.run }}
+    steps:
+      - id: r
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          R="${{ inputs.web_run }}"
+          if [ -z "$R" ]; then
+            R=$(gh run list -R "$GITHUB_REPOSITORY" -w build-web.yml --limit 20 --json databaseId,status -q '[.[] | select(.status == "completed")][0].databaseId')
+          fi
+          echo "build-web run: $R"
+          echo "run=$R" >> "$GITHUB_OUTPUT"
+
+  apk:
+    needs: [find]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        include:
+          - { app: wordcraft,      name: "CraftOffice Writer",    port: 47901 }
+          - { app: gridcraft,      name: "CraftOffice Sheets",    port: 47902 }
+          - { app: deckcraft,      name: "CraftOffice Slides",    port: 47903 }
+          - { app: designcraft,    name: "CraftOffice Layout",    port: 47904 }
+          - { app: pdfcraft,       name: "CraftOffice PDF",       port: 47905 }
+          - { app: photocraft,     name: "CraftOffice Photo",     port: 47906 }
+          - { app: vectorcraft,    name: "CraftOffice Vector",    port: 47907 }
+          - { app: lightcraft,     name: "CraftOffice Darkroom",  port: 47908 }
+          - { app: filmcraft,      name: "CraftOffice Video",     port: 47909 }
+          - { app: effectcraft,    name: "CraftOffice Motion",    port: 47910 }
+          - { app: soundcraft,     name: "CraftOffice Audio",     port: 47911 }
+          - { app: figcraft,       name: "CraftOffice Prototype", port: 47912 }
+          - { app: cadcraft,       name: "CraftOffice CAD",       port: 47913 }
+          - { app: materialcraft,  name: "CraftOffice Material",  port: 47914 }
+          - { app: texturecraft,   name: "CraftOffice Texture",   port: 47915 }
+          - { app: craft-anything, name: "CraftOffice Workshop",  port: 47916 }
+    steps:
+      - uses: actions/checkout@v4
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+      - uses: actions/download-artifact@v4
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+        with:
+          name: web-${{ matrix.app }}
+          path: webpart
+          run-id: ${{ needs.find.outputs.run }}
+          github-token: ${{ github.token }}
+      - uses: dtolnay/rust-toolchain@stable
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+      - uses: actions/setup-java@v4
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+        with:
+          gradle-version: "8.9"
+      - name: NDK, SDK platform, cargo-ndk
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;26.3.11579264" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+          cargo install cargo-ndk --locked
+      - name: App files and icon
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+        shell: bash
+        run: |
+          set -e
+          A="${{ matrix.app }}"
+          mkdir -p android/app/src/main/assets
+          cp -r "webpart/$A" android/app/src/main/assets/site
+          ls android/app/src/main/assets/site | head
+          du -sh android/app/src/main/assets/site
+          pip install --quiet pillow
+          python3 web/icons.py "$A" /tmp/ic > /dev/null
+          for d in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
+            dir="android/app/src/main/res/mipmap-${d%%:*}"; mkdir -p "$dir"
+            python3 -c "from PIL import Image; Image.open('/tmp/ic/$A-512.png').resize((${d##*:},${d##*:}), Image.LANCZOS).save('$dir/ic_launcher.png')"
+          done
+      - name: Engine library
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+        working-directory: android/engine
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/26.3.11579264"
+          cargo ndk -t arm64-v8a -t armeabi-v7a -o ../app/src/main/jniLibs build --release
+      - name: APK
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+        working-directory: android
+        shell: bash
+        run: |
+          set -e
+          gradle --no-daemon assembleDebug -PcoId="${{ matrix.app }}" -PcoName="${{ matrix.name }}" -PcoPort="${{ matrix.port }}" \
+            -PcoVersion="1.0.${{ github.run_number }}" -PcoCode="${{ github.run_number }}"
+          mkdir -p ../out
+          N="${{ matrix.name }}"
+          cp app/build/outputs/apk/debug/app-debug.apk "../out/${N// /-}.apk"
+          ls -la ../out
+      - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+        with:
+          name: apk-${{ matrix.app }}
+          path: out/
+
+  package-android:
+    needs: [apk]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/upload-artifact/merge@v4
+        with:
+          name: craftoffice-android
+          pattern: apk-*
