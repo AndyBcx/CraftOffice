@@ -88,6 +88,7 @@ jobs:
           if [ -z "$REF" ]; then
             fetch craft-i18n craft-i18n "$I18N_REF"
             git -C craft-i18n apply --whitespace=nowarn "$W/patches/craft-i18n.patch"
+            if [ -f extra/craft-i18n.patch ]; then git -C craft-i18n apply --whitespace=nowarn "$W/extra/craft-i18n.patch"; fi
           else
             fetch craft-i18n craft-i18n "$REF"
           fi
@@ -98,7 +99,9 @@ jobs:
                    git -C appsrc apply --whitespace=nowarn "$W/patches/${{ matrix.app }}.patch" ;;
           esac
           # CraftOffice-bővítések (extra/<app>.patch)
-          if [ -f "extra/${{ matrix.app }}.patch" ]; then (cd appsrc && git apply --whitespace=nowarn "$W/extra/${{ matrix.app }}.patch"); fi
+          for P in "extra/${{ matrix.app }}.patch" extra/${{ matrix.app }}-[0-9]*.patch; do
+            if [ -f "$P" ]; then echo "extra: $P"; (cd appsrc && git apply --whitespace=nowarn "$W/$P"); fi
+          done
           # AniCraft: a CraftOffice mod-sorok a belső attribútumok mögé
           [ -f appsrc/src/main.rs ] && perl -0pi -e 's/(mod craftoffice_brand;\r?\nmod craftoffice_i18n;\r?\n)(.*?#!\[cfg_attr\(target_arch = "wasm32", allow\(dead_code\)\)\]\r?\n)/$2$1/s' appsrc/src/main.rs || true
           # a helyi gépen használt útvonalak cseréje a GitHub gép útvonalára
