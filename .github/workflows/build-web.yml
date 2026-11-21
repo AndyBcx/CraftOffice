@@ -1,0 +1,122 @@
+name: build-web
+
+# CraftOffice web (Android, tablet, any browser): the apps' WebAssembly builds in one static site
+# with an installable launcher page (PWA), as Vormantis runs on Android: served from the Ubuntu
+# machine, opened in Chrome, "Install app". Run by hand: Actions → build-web → Run workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Csak ez az app (pl. cadcraft); üresen mind'
+        required: false
+        default: ''
+
+env:
+  CRAFT_FONTS_REF: b076417b5880bd4154bd22f00695b1d28c6bea83
+  EGUI_REF: 6d518fc799681571963842f95b55a6b68431b15a
+  I18N_REF: e56d26244bbac099bfd42e23fb12f78a4be418a7
+  TRUNK_VERSION: v0.21.14
+  CARGO_TERM_COLOR: never
+
+jobs:
+  web:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        app: [wordcraft, gridcraft, pdfcraft, photocraft, deckcraft, designcraft, vectorcraft, lightcraft, filmcraft, effectcraft, soundcraft, figcraft, cadcraft, materialcraft, texturecraft, craft-anything]
+    steps:
+      - uses: actions/checkout@v4
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+      - name: Tools
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config clang cmake binaryen
+          rustup target add wasm32-unknown-unknown
+          curl -fsSL "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" | tar xz -C "$HOME/.cargo/bin"
+          trunk --version
+      - name: Prepare and build
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+        shell: bash
+        run: |
+          set -e
+          W="$GITHUB_WORKSPACE"
+          fetch() { mkdir -p "$2"; git -C "$2" init -q; git -C "$2" fetch -q --depth 1 "https://github.com/storytold/$1.git" "$3"; git -C "$2" checkout -q FETCH_HEAD; }
+          A="${{ matrix.app }}"
+          SRC=$(grep -E "^ *- \\{ app: $A," .github/workflows/build.yml | head -1 | sed -E 's/.*src: ([^ ,}]+).*/\1/')
+          I18=$(grep -E "^ *- \\{ app: $A," .github/workflows/build.yml | head -1 | grep -oE "i18n: [0-9a-f]+" | cut -d' ' -f2 || true)
+          tar xzf bundle/patches.tar.gz; tar xzf bundle/egui036.tar.gz
+          fetch craft-fonts craft-fonts "$CRAFT_FONTS_REF"
+          fetch egui egui-hook "$EGUI_REF"; git -C egui-hook apply --whitespace=nowarn "$W/patches/egui.patch"
+          if [ -z "$I18" ]; then fetch craft-i18n craft-i18n "$I18N_REF"; git -C craft-i18n apply --whitespace=nowarn "$W/patches/craft-i18n.patch"
+            if [ -f extra/craft-i18n.patch ]; then git -C craft-i18n apply --whitespace=nowarn "$W/extra/craft-i18n.patch"; fi
+          else fetch craft-i18n craft-i18n "$I18"; fi
+          case "$SRC" in
+            tar:*) tar xzf "bundle/$A-src.tar.gz"; mv "${SRC#tar:}" appsrc ;;
+            git:*) fetch "$A" appsrc "${SRC#git:}"; git -C appsrc apply --whitespace=nowarn "$W/patches/$A.patch" ;;
+          esac
+          for P in "extra/$A.patch" extra/$A-[0-9]*.patch; do
+            if [ -f "$P" ]; then echo "extra: $P"; (cd appsrc && git apply --whitespace=nowarn "$W/$P"); fi
+          done
+          find appsrc -name Cargo.toml -not -path "*/target/*" -print0 | xargs -0 sed -i "s#/home/claude/#$W/#g"
+          export CRAFT_I18N_DIR="$W/craft-i18n" CRAFT_FONTS_DIR="$W/craft-fonts"
+          mkdir -p "out/$A"
+          case "$A" in
+            effectcraft|filmcraft|lightcraft)
+              # These build with `cargo xtask web`, which wants the wasm-bindgen CLI of Cargo.lock.
+              WB=$(awk '/^name = "wasm-bindgen"$/{getline; gsub(/version = |"/,""); print; exit}' appsrc/Cargo.lock)
+              echo "wasm-bindgen $WB"
+              cargo install wasm-bindgen-cli --version "$WB" --locked
+              (cd appsrc && cargo xtask web)
+              D=appsrc/target/web/dist; [ "$A" = lightcraft ] && D=appsrc/target/web-site ;;
+            *)
+              (cd "appsrc/apps/$A-web" && trunk build --release)
+              D=appsrc/dist/web ;;
+          esac
+          cp -r "$D/." "out/$A/"
+          du -sh "out/$A"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.only || inputs.only == matrix.app }}
+        with:
+          name: web-${{ matrix.app }}
+          path: out/
+
+  package-web:
+    needs: [web]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: web-*
+          path: parts
+          merge-multiple: true
+      - name: Site
+        shell: bash
+        run: |
+          set -e
+          pip install --quiet pillow
+          mkdir -p craftoffice-web/site/icons
+          cp -r parts/. craftoffice-web/site/
+          cp web/index.html web/manifest.webmanifest web/sw.js craftoffice-web/site/
+          cp web/Caddyfile web/install.sh craftoffice-web/
+          chmod +x craftoffice-web/install.sh
+          for id in craftoffice wordcraft gridcraft pdfcraft photocraft deckcraft designcraft vectorcraft lightcraft filmcraft effectcraft soundcraft figcraft cadcraft materialcraft texturecraft craft-anything; do
+            python3 web/icons.py "$id" /tmp/ic >/dev/null
+            cp "/tmp/ic/$id-128.png" craftoffice-web/site/icons/
+          done
+          cp /tmp/ic/craftoffice-64.png /tmp/ic/craftoffice-256.png /tmp/ic/craftoffice-512.png craftoffice-web/site/icons/
+          python3 -c "from PIL import Image; Image.open('/tmp/ic/craftoffice-512.png').resize((192,192), Image.LANCZOS).save('craftoffice-web/site/icons/craftoffice-192.png')"
+          # The apps that built, for the launcher page (the others show greyed out).
+          (cd craftoffice-web/site && ls -d */ | grep -v icons | sed 's#/##' | python3 -c "import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))" > apps.json)
+          cat craftoffice-web/site/apps.json
+          du -sh craftoffice-web/site
+      - uses: actions/upload-artifact@v4
+        with:
+          name: craftoffice-web
+          path: craftoffice-web/
