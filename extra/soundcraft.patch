@@ -1,0 +1,32 @@
+diff --git a/apps/soundcraft/src/craftoffice_i18n/hu.tsv b/apps/soundcraft/src/craftoffice_i18n/hu.tsv
+index a2fd42d..221b463 100644
+--- a/apps/soundcraft/src/craftoffice_i18n/hu.tsv
++++ b/apps/soundcraft/src/craftoffice_i18n/hu.tsv
+@@ -1396,3 +1396,4 @@ movie missing from session	a film hiányzik a munkamenetből
+ Surround pan: drag the puck · double-click: front centre · Alt-drag: divergence	Térhatású panoráma: húzd a pöcköt · dupla kattintás: elöl középre · Alt+húzás: divergencia
+ Divergence (0 = point source)	Divergencia (0 = pontforrás)
+ Elevation (height speakers)	Magasság (magassági hangsugárzók)
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	CraftOffice-kiadás – AndyBcx: magyar és román felület.
+diff --git a/apps/soundcraft/src/craftoffice_i18n/ro.tsv b/apps/soundcraft/src/craftoffice_i18n/ro.tsv
+index 5e2ce2b..4d8c68e 100644
+--- a/apps/soundcraft/src/craftoffice_i18n/ro.tsv
++++ b/apps/soundcraft/src/craftoffice_i18n/ro.tsv
+@@ -1396,3 +1396,4 @@ movie missing from session	filmul lipsește din sesiune
+ Surround pan: drag the puck · double-click: front centre · Alt-drag: divergence	Panoramare surround: glisați cursorul · dublu clic: centru față · Alt-glisare: divergență
+ Divergence (0 = point source)	Divergență (0 = sursă punctiformă)
+ Elevation (height speakers)	Elevație (difuzoare de înălțime)
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
+diff --git a/crates/ui-egui/src/panels/about.rs b/crates/ui-egui/src/panels/about.rs
+index 53ff69d..027aefa 100644
+--- a/crates/ui-egui/src/panels/about.rs
++++ b/crates/ui-egui/src/panels/about.rs
+@@ -28,6 +28,9 @@ pub(super) fn about(app: &mut SoundApp, ctx: &egui::Context) {
+                 ui.label("Dual-licensed MIT OR Apache-2.0. Made with Rust and egui.");
+                 ui.hyperlink_to("getartcraft.com/apps/soundcraft", "https://getartcraft.com/apps/soundcraft");
+                 ui.hyperlink_to("Join us on Discord", "https://discord.gg/artcraft");
++                ui.add_space(6.0);
++                ui.label("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."); // CraftOffice
++                ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+             }
+         }
+     });

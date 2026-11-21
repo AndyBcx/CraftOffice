@@ -1,0 +1,437 @@
+diff --git a/apps/cadcraft/Cargo.toml b/apps/cadcraft/Cargo.toml
+index cf9809c..ff63a5b 100644
+--- a/apps/cadcraft/Cargo.toml
++++ b/apps/cadcraft/Cargo.toml
+@@ -42,6 +42,8 @@ zbus = { version = "=5.19.0", default-features = false, features = ["async-io",
+ # Floating panels open in their own OS windows on the desktop; the web build keeps them in the page.
+ craft-ui = { workspace = true, features = ["native-windows"] }
+ craft-update = { workspace = true }
++# CraftOffice: Plot straight to a system printer
++craft-print = { git = "https://github.com/storytold/craft-libs", rev = "6e03f65bf45181db77ba6229716e6624db9eb25b" }
+ rfd = { workspace = true }
+ sys-locale = "0.3"
+ 
+diff --git a/apps/cadcraft/src/main.rs b/apps/cadcraft/src/main.rs
+index 5e9b535..0b72c2c 100644
+--- a/apps/cadcraft/src/main.rs
++++ b/apps/cadcraft/src/main.rs
+@@ -173,6 +173,29 @@ fn services() -> Services {
+         pick_pgp: Some(Box::new(|dir: Option<&str>| {
+             file_dialog(&Pick::Pgp(dir.unwrap_or_default().into())).pick_file().map(|p| p.to_string_lossy().to_string())
+         })),
++        // CraftOffice: Plot straight to a system printer, at the plotted scale.
++        printers: Some(std::sync::Arc::new(|| {
++            craft_print::printers()
++                .into_iter()
++                .map(|p| cadcraft_ui_egui::direct_print::PrinterInfo { name: p.name, label: p.description, default: p.default })
++                .collect()
++        })),
++        print_pdf: Some(std::sync::Arc::new(|pdf: &[u8], j: &cadcraft_ui_egui::direct_print::PrintJob| {
++            let job = craft_print::Job {
++                printer: Some(j.printer.clone()),
++                copies: j.copies.clamp(1, 999),
++                duplex: Some(match j.duplex {
++                    1 => craft_print::Duplex::LongEdge,
++                    2 => craft_print::Duplex::ShortEdge,
++                    _ => craft_print::Duplex::Off,
++                }),
++                grayscale: j.grayscale,
++                scaling: craft_print::Scaling::Exact,
++                title: j.title.clone(),
++                ..Default::default()
++            };
++            craft_print::submit(pdf, &job).map(|_| ()).map_err(|e| e.to_string())
++        })),
+     }
+ }
+ 
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index b51b0ec..c7f69ea 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -351,6 +351,10 @@ fn about(ctx: &egui::Context, open: &mut bool) {
+                     ui.label(RichText::new(crate::tl!("One of the Crafting Apps by the ArtCraft team and community.")).color(t.text_dim));
+                     ui.hyperlink_to("getartcraft.com/apps/cadcraft", "https://getartcraft.com/apps/cadcraft");
+                     ui.hyperlink_to(crate::tl!("Join us on Discord"), "https://discord.gg/artcraft");
++                    // CraftOffice
++                    ui.add_space(6.0);
++                    ui.label(crate::tl!("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."));
++                    ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+                     ui.add_space(6.0);
+                     ui.label(RichText::new(crate::tl!("MIT OR Apache-2.0. Not affiliated with Autodesk, Inc.")).small().color(t.text_faint));
+                 }
+diff --git a/crates/ui-egui/src/direct_print.rs b/crates/ui-egui/src/direct_print.rs
+new file mode 100644
+index 0000000..d8edc31
+--- /dev/null
++++ b/crates/ui-egui/src/direct_print.rs
+@@ -0,0 +1,219 @@
++//! CraftOffice: the Plot dialog's "Printer" choice. Next to the PDF file route, the plot can go
++//! straight to a system printer: PLOT makes the same PDF (without a path it returns the bytes)
++//! and the host's spooler service sends it on a worker thread, at the plotted scale.
++//!
++//! The choice lives on the UI thread only, so it stays out of the page setups saved in the drawing.
++
++use std::cell::RefCell;
++use std::sync::mpsc::{Receiver, TryRecvError};
++use std::sync::Arc;
++use std::time::Duration;
++
++/// A printer the system spooler offers.
++#[derive(Clone, Debug, PartialEq)]
++pub struct PrinterInfo {
++    pub name: String,
++    pub label: String,
++    pub default: bool,
++}
++
++/// One print job. `duplex`: 0 one-sided, 1 long edge, 2 short edge.
++#[derive(Clone, Debug, PartialEq)]
++pub struct PrintJob {
++    pub printer: String,
++    pub copies: u32,
++    pub duplex: u8,
++    pub grayscale: bool,
++    pub title: String,
++}
++
++/// Lists the system printers (slow: called off the UI thread).
++pub type PrintersFn = Arc<dyn Fn() -> Vec<PrinterInfo> + Send + Sync>;
++
++/// Hands a PDF to the spooler (slow: called on a worker thread).
++pub type PrintPdfFn = Arc<dyn Fn(&[u8], &PrintJob) -> Result<(), String> + Send + Sync>;
++
++const SIDES: [(u8, &str); 3] = [
++    (0, "Print One Sided"),
++    (1, "Print on Both Sides (flip on long edge)"),
++    (2, "Print on Both Sides (flip on short edge)"),
++];
++
++struct State {
++    printers: Vec<PrinterInfo>,
++    loading: Option<Receiver<Vec<PrinterInfo>>>,
++    asked: bool,
++    /// `None`: plot to a file (the original route).
++    printer: Option<String>,
++    copies: u32,
++    sides: u8,
++    grayscale: bool,
++    /// Jobs on their way to the spooler: (printer, answer).
++    sending: Vec<(String, Receiver<Result<(), String>>)>,
++}
++
++impl Default for State {
++    fn default() -> Self {
++        State { printers: Vec::new(), loading: None, asked: false, printer: None, copies: 1, sides: 0, grayscale: false, sending: Vec::new() }
++    }
++}
++
++thread_local! {
++    static STATE: RefCell<State> = RefCell::new(State::default());
++}
++
++/// A label through the interface catalog.
++fn tr(s: &str) -> String {
++    crate::i18n::t(s).to_string()
++}
++
++fn discover(list: &Option<PrintersFn>, s: &mut State) {
++    s.asked = true;
++    let Some(list) = list.clone() else { return };
++    let (tx, rx) = std::sync::mpsc::channel();
++    if std::thread::Builder::new().name("print-discovery".into()).spawn(move || drop(tx.send(list()))).is_ok() {
++        s.loading = Some(rx);
++    }
++}
++
++/// The "Printer" row at the top of the Plot dialog (only where the host can print).
++pub fn section(services: &crate::Services, ui: &mut egui::Ui) {
++    if services.print_pdf.is_none() {
++        return;
++    }
++    STATE.with_borrow_mut(|s| {
++        if !s.asked {
++            discover(&services.printers, s);
++        }
++        if let Some(rx) = &s.loading {
++            match rx.try_recv() {
++                Ok(list) => {
++                    s.printers = list;
++                    s.loading = None;
++                }
++                Err(TryRecvError::Empty) => ui.ctx().request_repaint_after(Duration::from_millis(200)),
++                Err(TryRecvError::Disconnected) => s.loading = None,
++            }
++        }
++        let label = |p: &PrinterInfo| if p.label.is_empty() { p.name.clone() } else { p.label.clone() };
++        let file = tr("File (PDF, PNG, SVG)");
++        let selected = match &s.printer {
++            None => file.clone(),
++            Some(name) => s.printers.iter().find(|p| &p.name == name).map_or_else(|| name.clone(), label),
++        };
++        egui::Grid::new("craftoffice_print_grid").num_columns(2).spacing(egui::vec2(10.0, 6.0)).show(ui, |ui| {
++            ui.label("Printer");
++            ui.horizontal(|ui| {
++                craft_ui::ComboBox::from_id_salt("craftoffice_print_to").selected_text(selected).width(190.0).show_ui(ui, |ui| {
++                    if ui.selectable_label(s.printer.is_none(), file.as_str()).clicked() {
++                        s.printer = None;
++                    }
++                    if s.loading.is_some() && s.printers.is_empty() {
++                        ui.label("Looking for printers…");
++                    }
++                    for p in &s.printers {
++                        let text = if p.default { format!("{} ({})", label(p), tr("default")) } else { label(p) };
++                        if ui.selectable_label(s.printer.as_ref() == Some(&p.name), text).clicked() {
++                            s.printer = Some(p.name.clone());
++                        }
++                    }
++                });
++                if ui.small_button("⟳").on_hover_text("Refresh the printer list").clicked() {
++                    discover(&services.printers, s);
++                }
++            });
++            ui.end_row();
++            if s.printer.is_some() {
++                ui.label("Copies");
++                ui.add(egui::DragValue::new(&mut s.copies).range(1..=999).speed(0.2));
++                ui.end_row();
++                ui.label("Sides");
++                let sides = SIDES.iter().find(|x| x.0 == s.sides).map_or(SIDES[0].1, |x| x.1);
++                craft_ui::ComboBox::from_id_salt("craftoffice_print_sides").selected_text(tr(sides)).width(250.0).show_ui(ui, |ui| {
++                    for (id, text) in SIDES {
++                        if ui.selectable_label(s.sides == id, text).clicked() {
++                            s.sides = id;
++                        }
++                    }
++                });
++                ui.end_row();
++                ui.label("");
++                ui.checkbox(&mut s.grayscale, "Print in grayscale");
++                ui.end_row();
++            }
++        });
++    });
++}
++
++/// A printer is chosen: OK prints instead of asking for a file.
++pub fn to_printer() -> bool {
++    STATE.with_borrow(|s| s.printer.is_some())
++}
++
++/// The job for the chosen printer, titled `title`.
++pub fn job(title: &str) -> Option<PrintJob> {
++    STATE.with_borrow(|s| {
++        s.printer.clone().map(|printer| PrintJob { printer, copies: s.copies.clamp(1, 999), duplex: s.sides, grayscale: s.grayscale, title: title.to_string() })
++    })
++}
++
++/// Send `pdf` to the chosen printer on a worker thread; [`poll`] reports the answer.
++pub fn send(services: &crate::Services, pdf: Vec<u8>, title: &str) -> Result<String, String> {
++    let job = job(title).ok_or_else(|| tr("Choose a printer first."))?;
++    let submit = services.print_pdf.clone().ok_or_else(|| tr("Printing to a printer isn't available here."))?;
++    let printer = job.printer.clone();
++    let (tx, rx) = std::sync::mpsc::channel();
++    std::thread::Builder::new()
++        .name("print-submit".into())
++        .spawn(move || drop(tx.send(submit(&pdf, &job))))
++        .map_err(|e| e.to_string())?;
++    STATE.with_borrow_mut(|s| s.sending.push((printer.clone(), rx)));
++    Ok(printer)
++}
++
++/// Every frame: echo the answers of the jobs sent to the spooler.
++pub fn poll(app: &mut crate::CadApp, ctx: &egui::Context) {
++    let done: Vec<(String, Result<(), String>)> = STATE.with_borrow_mut(|s| {
++        let mut done = Vec::new();
++        s.sending.retain(|(printer, rx)| match rx.try_recv() {
++            Ok(r) => {
++                done.push((printer.clone(), r));
++                false
++            }
++            Err(TryRecvError::Empty) => true,
++            Err(TryRecvError::Disconnected) => {
++                done.push((printer.clone(), Err("the print job stopped".into())));
++                false
++            }
++        });
++        if !s.sending.is_empty() {
++            ctx.request_repaint_after(Duration::from_millis(250));
++        }
++        done
++    });
++    for (printer, r) in done {
++        app.session.echo(match r {
++            Ok(()) => format!("{} {printer}", tr("Sent to the printer")),
++            Err(e) => format!("{} {printer}: {e}", tr("Printing failed:")),
++        });
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn the_file_route_is_the_default_and_a_printer_makes_a_job() {
++        assert!(!to_printer());
++        assert!(job("x").is_none());
++        STATE.with_borrow_mut(|s| {
++            s.printer = Some("P".into());
++            s.copies = 0;
++            s.sides = 2;
++        });
++        let j = job("Plot").unwrap();
++        assert_eq!((j.printer.as_str(), j.copies, j.duplex, j.title.as_str()), ("P", 1, 2, "Plot"));
++        STATE.with_borrow_mut(|s| *s = State::default());
++    }
++}
+diff --git a/crates/ui-egui/src/i18n/hu.tsv b/crates/ui-egui/src/i18n/hu.tsv
+index 0665055..bd93f1f 100644
+--- a/crates/ui-egui/src/i18n/hu.tsv
++++ b/crates/ui-egui/src/i18n/hu.tsv
+@@ -1361,3 +1361,22 @@ menu	View	Nézet
+ 	Ctrl+Enter to apply	Ctrl+Enter to apply
+ 	Edit Text	Edit Text
+ 	The drawing changed. Close the window and open it again.	A rajz megváltozott. Zárja be az ablakot, és nyissa meg újra.
++	Printer	Nyomtató
++	File (PDF, PNG, SVG)	Fájl (PDF, PNG, SVG)
++	Looking for printers…	Nyomtatók keresése…
++	default	alapértelmezett
++	Refresh the printer list	Nyomtatólista frissítése
++	Copies	Példányszám
++	Sides	Oldalak
++	Print One Sided	Egyoldalas nyomtatás
++	Print on Both Sides (flip on long edge)	Kétoldalas nyomtatás (hosszú él mentén)
++	Print on Both Sides (flip on short edge)	Kétoldalas nyomtatás (rövid él mentén)
++	Print in grayscale	Szürkeárnyalatos nyomtatás
++	Choose a printer first.	Előbb válassz nyomtatót.
++	Printing to a printer isn't available here.	Itt nem lehet nyomtatóra nyomtatni.
++	Sent to the printer	Elküldve a nyomtatóra:
++	Printing failed:	A nyomtatás nem sikerült:
++	Printing needs a PDF device: choose None or a PDF plotter.	A nyomtatáshoz PDF-eszköz kell: válaszd a Nincs vagy egy PDF-plotter lehetőséget.
++	The plot made no PDF to print.	A nyomtatás nem készített nyomtatható PDF-et.
++	Sending to the printer	Küldés a nyomtatóra:
++	CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	CraftOffice-kiadás – AndyBcx: magyar és román felület.
+diff --git a/crates/ui-egui/src/i18n/ro.tsv b/crates/ui-egui/src/i18n/ro.tsv
+index 0c91707..4bb5530 100644
+--- a/crates/ui-egui/src/i18n/ro.tsv
++++ b/crates/ui-egui/src/i18n/ro.tsv
+@@ -1362,3 +1362,22 @@ menu	View	Vizualizare
+ 	Ctrl+Enter to apply	Ctrl+Enter pentru aplicare
+ 	Edit Text	Editare text
+ 	The drawing changed. Close the window and open it again.	Desenul s-a modificat. Închideți fereastra și deschideți-o din nou.
++	Printer	Imprimantă
++	File (PDF, PNG, SVG)	Fișier (PDF, PNG, SVG)
++	Looking for printers…	Se caută imprimante…
++	default	implicită
++	Refresh the printer list	Reîmprospătare listă imprimante
++	Copies	Copii
++	Sides	Fețe
++	Print One Sided	Imprimare pe o singură față
++	Print on Both Sides (flip on long edge)	Imprimare față-verso (întoarcere pe latura lungă)
++	Print on Both Sides (flip on short edge)	Imprimare față-verso (întoarcere pe latura scurtă)
++	Print in grayscale	Imprimare în tonuri de gri
++	Choose a printer first.	Alegeți mai întâi o imprimantă.
++	Printing to a printer isn't available here.	Imprimarea la o imprimantă nu este disponibilă aici.
++	Sent to the printer	Trimis la imprimanta
++	Printing failed:	Imprimarea a eșuat:
++	Printing needs a PDF device: choose None or a PDF plotter.	Imprimarea necesită un dispozitiv PDF: alegeți Niciunul sau un plotter PDF.
++	The plot made no PDF to print.	Plotarea nu a produs un PDF de imprimat.
++	Sending to the printer	Se trimite la imprimanta
++	CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 41787b0..1d71dcd 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -61,6 +61,8 @@ pub mod options;
+ pub mod palettes;
+ pub mod parametric;
+ pub mod plotstyles;
++/// CraftOffice: Plot to a system printer.
++pub mod direct_print;
+ pub mod quick;
+ pub mod save_loss;
+ pub mod shortcut_menus;
+@@ -242,6 +244,10 @@ pub struct Services {
+     pub no_file_system: bool,
+     /// Pick a `.pgp` alias file, starting in the folder given (the last import's).
+     pub pick_pgp: Option<Box<dyn Fn(Option<&str>) -> Option<String>>>,
++    /// CraftOffice: printer discovery for the Plot dialog; absent on the web.
++    pub printers: Option<direct_print::PrintersFn>,
++    /// CraftOffice: direct printing of a plotted PDF; absent on the web.
++    pub print_pdf: Option<direct_print::PrintPdfFn>,
+ }
+ 
+ /// The file dialog to show: Open, Save with the suggested file name, APPLOAD's `.lsp` picker or
+@@ -877,6 +883,7 @@ impl CadApp {
+         capture::drain(self, ctx);
+         self.gpu_fault_tick(ctx);
+         managers::plot_window_resume(self, ctx);
++        direct_print::poll(self, ctx);
+         hatchdlg::resume(self);
+         // What follows is frame work, once per layout frame or hidden tick.
+         if ctx.current_pass_index() != 0 {
+diff --git a/crates/ui-egui/src/managers.rs b/crates/ui-egui/src/managers.rs
+index e1bafb0..9183ebf 100644
+--- a/crates/ui-egui/src/managers.rs
++++ b/crates/ui-egui/src/managers.rs
+@@ -960,6 +960,8 @@ fn plot(app: &mut CadApp, ctx: &egui::Context, open: &mut bool) -> Action {
+             });
+             ui.end_row();
+         });
++        // CraftOffice: a file, or straight to a system printer.
++        crate::direct_print::section(&app.services, ui);
+         ui.separator();
+         ui.horizontal_top(|ui| {
+             egui::Grid::new("plot_grid").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
+@@ -1041,6 +1043,16 @@ fn plot(app: &mut CadApp, ctx: &egui::Context, open: &mut bool) -> Action {
+         crate::exchange::preview_plot(app, ctx, plot_params(&st, Some((1600.0 / long_in).clamp(50.0, 300.0))), info);
+         return action;
+     }
++    if ok && crate::direct_print::to_printer() {
++        // CraftOffice: the plot's PDF goes to the chosen printer.
++        if ext != "pdf" {
++            app.session.echo(crate::i18n::t("Printing needs a PDF device: choose None or a PDF plotter.").to_string());
++            return action;
++        }
++        let target = st.target.clone();
++        print_plot(app, plot_params(&st, None), &target);
++        return action;
++    }
+     if ok {
+         let params = plot_params(&st, None);
+         let target = st.target.clone();
+@@ -1082,6 +1094,33 @@ fn run_plot(app: &mut CadApp, params: Value, target: &str) {
+     }
+ }
+ 
++/// CraftOffice: plot with the Plot dialog's settings and send the PDF to the chosen printer.
++fn print_plot(app: &mut CadApp, params: Value, target: &str) {
++    if app.ui.dialog.as_deref() == Some("plot") {
++        app.ui.dialog = None;
++    }
++    let pdf = match app.run("plot", params) {
++        Ok(r) => r.get("data").and_then(Value::as_str).and_then(cadcraft_engine::cmd::file::base64_decode),
++        Err(_) => {
++            app.ui.dialog = Some("plot".into());
++            return;
++        }
++    };
++    let Some(pdf) = pdf else {
++        app.session.echo("The plot made no PDF to print.".to_string());
++        return;
++    };
++    let title = app.session.state().map(|s| s.title.clone()).unwrap_or_default();
++    let title = if title.is_empty() { format!("CraftOffice CAD - {target}") } else { format!("{title} - {target}") };
++    match crate::direct_print::send(&app.services, pdf, &title) {
++        Ok(printer) => app.session.echo(format!("{} {printer}…", crate::i18n::t("Sending to the printer"))),
++        Err(e) => {
++            app.session.echo(e);
++            app.ui.dialog = Some("plot".into());
++        }
++    }
++}
++
+ /// The sheet in the chosen orientation with its printable area, and its size.
+ fn sheet_sketch(ui: &mut egui::Ui, page: &cadcraft_doc::PageSetup, t: &Tokens) {
+     let (w, h) = if page.landscape { (page.height_mm, page.width_mm) } else { (page.width_mm, page.height_mm) };

@@ -1,0 +1,18 @@
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index 74468c6..adb7f27 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -1678,6 +1678,13 @@ fn dialog_about(ui: &mut egui::Ui, req: &mut Pending) -> bool {
+             });
+             ui.add_space(6.0);
+             ui.label(tl!("A clean-room, open-source PDF application written in Rust. MIT OR Apache-2.0."));
++            ui.add_space(6.0);
++            ui.label(match crate::i18n::current().code() {
++                "hu" => "CraftOffice-kiadás – AndyBcx: magyar és román felület.",
++                "ro" => "Ediția CraftOffice de AndyBcx: interfață în maghiară și română.",
++                _ => "CraftOffice edition by AndyBcx: Hungarian and Romanian interface.",
++            }); // CraftOffice
++            ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+             ui.label(
+                 egui::RichText::new(
+                     "Rendering: hayro (bootstrap) · UI: egui · Icons: Lucide (ISC) · Fonts: Inter, JetBrains Mono, Dancing Script (OFL)",

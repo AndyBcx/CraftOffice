@@ -1,0 +1,26 @@
+diff --git a/apps/materialcraft/src/craftoffice_i18n/hu.tsv b/apps/materialcraft/src/craftoffice_i18n/hu.tsv
+index e69de29..f0ec8d9 100644
+--- a/apps/materialcraft/src/craftoffice_i18n/hu.tsv
++++ b/apps/materialcraft/src/craftoffice_i18n/hu.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	CraftOffice-kiadás – AndyBcx: magyar és román felület.
+diff --git a/apps/materialcraft/src/craftoffice_i18n/ro.tsv b/apps/materialcraft/src/craftoffice_i18n/ro.tsv
+index e69de29..440a9dd 100644
+--- a/apps/materialcraft/src/craftoffice_i18n/ro.tsv
++++ b/apps/materialcraft/src/craftoffice_i18n/ro.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
+diff --git a/crates/ui-egui/src/windows.rs b/crates/ui-egui/src/windows.rs
+index ce7ac7d..a916fcf 100644
+--- a/crates/ui-egui/src/windows.rs
++++ b/crates/ui-egui/src/windows.rs
+@@ -230,6 +230,9 @@ fn about(app: &mut MaterialCraftApp, ctx: &egui::Context) {
+             ui.hyperlink_to("getartcraft.com/apps/materialcraft", "https://getartcraft.com/apps/materialcraft");
+             ui.hyperlink_to("discord.gg/artcraft", "https://discord.gg/artcraft");
+             ui.add_space(6.0);
++            ui.label("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."); // CraftOffice
++            ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
++            ui.add_space(6.0);
+             ui.label(RichText::new("MIT OR Apache-2.0").size(11.0).color(tk.text_dim));
+         });
+     });

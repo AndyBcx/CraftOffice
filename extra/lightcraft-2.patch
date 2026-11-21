@@ -1,0 +1,26 @@
+diff --git a/apps/lightcraft/src/craftoffice_i18n/hu.tsv b/apps/lightcraft/src/craftoffice_i18n/hu.tsv
+index e69de29..f0ec8d9 100644
+--- a/apps/lightcraft/src/craftoffice_i18n/hu.tsv
++++ b/apps/lightcraft/src/craftoffice_i18n/hu.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	CraftOffice-kiadás – AndyBcx: magyar és román felület.
+diff --git a/apps/lightcraft/src/craftoffice_i18n/ro.tsv b/apps/lightcraft/src/craftoffice_i18n/ro.tsv
+index e69de29..440a9dd 100644
+--- a/apps/lightcraft/src/craftoffice_i18n/ro.tsv
++++ b/apps/lightcraft/src/craftoffice_i18n/ro.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index 892bed1..ff46337 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -2050,6 +2050,9 @@ fn about_body(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, dlg: &mut
+                 "MIT OR Apache-2.0. Fonts: {} (OFL). Icons: original.",
+                 crate::theme::font_credits(app.chinese_font.is_some())
+             ));
++            ui.add_space(6.0);
++            ui.label("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."); // CraftOffice
++            ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+             ui.add_space(10.0);
+             let r = crate::button::Button::new("Join the ArtCraft Discord")
+                 .primary()

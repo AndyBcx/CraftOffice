@@ -1,0 +1,26 @@
+diff --git a/apps/craft-anything/src/craftoffice_i18n/hu.tsv b/apps/craft-anything/src/craftoffice_i18n/hu.tsv
+index e69de29..f0ec8d9 100644
+--- a/apps/craft-anything/src/craftoffice_i18n/hu.tsv
++++ b/apps/craft-anything/src/craftoffice_i18n/hu.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	CraftOffice-kiadás – AndyBcx: magyar és román felület.
+diff --git a/apps/craft-anything/src/craftoffice_i18n/ro.tsv b/apps/craft-anything/src/craftoffice_i18n/ro.tsv
+index e69de29..440a9dd 100644
+--- a/apps/craft-anything/src/craftoffice_i18n/ro.tsv
++++ b/apps/craft-anything/src/craftoffice_i18n/ro.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
+diff --git a/crates/ui-egui/src/home.rs b/crates/ui-egui/src/home.rs
+index db8965e..4afcd3b 100644
+--- a/crates/ui-egui/src/home.rs
++++ b/crates/ui-egui/src/home.rs
+@@ -180,6 +180,9 @@ pub fn modals(app: &mut CraftApp, ctx: &egui::Context) {
+                 Modal::About => {
+                     ui.label(theme::heading("Craft Anything", theme::SECTION));
+                     ui.label(RichText::new(format!("{} {}", tr("Version"), env!("CARGO_PKG_VERSION"))).color(t.text_dim));
++                    ui.add_space(6.0);
++                    ui.label("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."); // CraftOffice
++                    ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+                     ui.add_space(12.0);
+                     if widgets::primary(ui, "Close").clicked() {
+                         close = true;

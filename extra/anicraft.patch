@@ -1,0 +1,48 @@
+diff --git a/src/app.rs b/src/app.rs
+index 0e97f1b..4ace67d 100644
+--- a/src/app.rs
++++ b/src/app.rs
+@@ -2250,6 +2250,9 @@ fn about_window(&mut self, ctx: &egui::Context) {
+             ui.label(tr!("Open-source 2D vector animation studio, written in Rust."));
+             ui.label(trn!("{n} engine command — all available headless via anicraft-cli.", "{n} engine commands — all available headless via anicraft-cli.", commands().len()));
+             ui.colored_label(T.text_dim, "MIT OR Apache-2.0"); // i18n-exempt: licence identifiers
++            ui.add_space(6.0);
++            ui.label("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."); // CraftOffice
++            ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+             ui.label(theme::text(theme::Type::Caption, tr!("Typefaces: {fonts}", fonts = theme::font_summary())));
+         });
+         crate::a11y::name_title_bar(&shown, tr!("CraftOffice Animation"));
+diff --git a/src/craftoffice_i18n/hu.tsv b/src/craftoffice_i18n/hu.tsv
+index e69de29..f0ec8d9 100644
+--- a/src/craftoffice_i18n/hu.tsv
++++ b/src/craftoffice_i18n/hu.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	CraftOffice-kiadás – AndyBcx: magyar és román felület.
+diff --git a/src/craftoffice_i18n/ro.tsv b/src/craftoffice_i18n/ro.tsv
+index e69de29..440a9dd 100644
+--- a/src/craftoffice_i18n/ro.tsv
++++ b/src/craftoffice_i18n/ro.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
+diff --git a/src/main.rs b/src/main.rs
+index af30f80..8cfebc8 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -10,8 +10,6 @@
+ //! Built for `wasm32-unknown-unknown` the same program is the web editor (`src/web.rs`,
+ //! ADR 0036, docs/web.md).
+ #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+-mod craftoffice_brand;
+-mod craftoffice_i18n;
+ // Release builds are Windows GUI programs, so no console window opens beside the app (the
+ // packaging checks the PE subsystem, ADR 0026). Debug builds keep the console for logs; the
+ // headless front end is anicraft-cli.
+@@ -19,6 +17,8 @@
+ // The browser build leaves out what only the desktop has (screenshot runs, the recovery folder,
+ // window chrome, `--open` panels); that code stays compiled for it but unused (ADR 0036).
+ #![cfg_attr(target_arch = "wasm32", allow(dead_code))]
++mod craftoffice_brand;
++mod craftoffice_i18n;
+ 
+ // First, so its `tr!` macros are in scope in every module after it.
+ #[macro_use]

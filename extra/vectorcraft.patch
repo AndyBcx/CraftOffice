@@ -1,0 +1,26 @@
+diff --git a/apps/vectorcraft/src/craftoffice_i18n/hu.tsv b/apps/vectorcraft/src/craftoffice_i18n/hu.tsv
+index e69de29..f0ec8d9 100644
+--- a/apps/vectorcraft/src/craftoffice_i18n/hu.tsv
++++ b/apps/vectorcraft/src/craftoffice_i18n/hu.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	CraftOffice-kiadás – AndyBcx: magyar és román felület.
+diff --git a/apps/vectorcraft/src/craftoffice_i18n/ro.tsv b/apps/vectorcraft/src/craftoffice_i18n/ro.tsv
+index e69de29..440a9dd 100644
+--- a/apps/vectorcraft/src/craftoffice_i18n/ro.tsv
++++ b/apps/vectorcraft/src/craftoffice_i18n/ro.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
+diff --git a/crates/ui-egui/src/dialogs/about.rs b/crates/ui-egui/src/dialogs/about.rs
+index a474d45..f8764c6 100644
+--- a/crates/ui-egui/src/dialogs/about.rs
++++ b/crates/ui-egui/src/dialogs/about.rs
+@@ -59,6 +59,9 @@ fn about_tab(app: &mut VectorcraftApp, ui: &mut egui::Ui) {
+             ));
+         });
+     });
++    ui.add_space(6.0);
++    ui.label("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."); // CraftOffice
++    ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+     ui.add_space(12.0);
+     crate::community::links(app, ui);
+     ui.add_space(12.0);

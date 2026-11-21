@@ -1,0 +1,26 @@
+diff --git a/apps/figcraft/src/craftoffice_i18n/hu.tsv b/apps/figcraft/src/craftoffice_i18n/hu.tsv
+index e69de29..f0ec8d9 100644
+--- a/apps/figcraft/src/craftoffice_i18n/hu.tsv
++++ b/apps/figcraft/src/craftoffice_i18n/hu.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	CraftOffice-kiadás – AndyBcx: magyar és román felület.
+diff --git a/apps/figcraft/src/craftoffice_i18n/ro.tsv b/apps/figcraft/src/craftoffice_i18n/ro.tsv
+index e69de29..440a9dd 100644
+--- a/apps/figcraft/src/craftoffice_i18n/ro.tsv
++++ b/apps/figcraft/src/craftoffice_i18n/ro.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index 52170af..5bc3b8e 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -157,6 +157,9 @@ fn about_body(ui: &mut egui::Ui, t: &Tokens) {
+     ui.add_space(8.0);
+     ui.hyperlink_to("getartcraft.com/apps/figcraft", "https://getartcraft.com/apps/figcraft");
+     ui.hyperlink_to(tr("Join us on Discord"), "https://discord.gg/artcraft");
++    ui.add_space(6.0);
++    ui.label("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."); // CraftOffice
++    ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+     ui.add_space(8.0);
+     ui.label(
+         RichText::new(tr("Dual-licensed MIT OR Apache-2.0. Made by the ArtCraft team and community.")).color(t.text_secondary).font(regular(11.0)),

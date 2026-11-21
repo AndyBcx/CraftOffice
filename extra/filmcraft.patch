@@ -1,0 +1,26 @@
+diff --git a/apps/filmcraft/src/craftoffice_i18n/hu.tsv b/apps/filmcraft/src/craftoffice_i18n/hu.tsv
+index e69de29..f0ec8d9 100644
+--- a/apps/filmcraft/src/craftoffice_i18n/hu.tsv
++++ b/apps/filmcraft/src/craftoffice_i18n/hu.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	CraftOffice-kiadás – AndyBcx: magyar és román felület.
+diff --git a/apps/filmcraft/src/craftoffice_i18n/ro.tsv b/apps/filmcraft/src/craftoffice_i18n/ro.tsv
+index e69de29..440a9dd 100644
+--- a/apps/filmcraft/src/craftoffice_i18n/ro.tsv
++++ b/apps/filmcraft/src/craftoffice_i18n/ro.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
+diff --git a/crates/ui-egui/src/panels/dialogs.rs b/crates/ui-egui/src/panels/dialogs.rs
+index d472bbb..135c28f 100644
+--- a/crates/ui-egui/src/panels/dialogs.rs
++++ b/crates/ui-egui/src/panels/dialogs.rs
+@@ -472,6 +472,9 @@ fn about_tab(app: &mut FilmcraftApp, ui: &mut egui::Ui) {
+     ui.heading("FilmCraft");
+     ui.label(tlf!("Version {version}", version = env!("CARGO_PKG_VERSION")));
+     ui.label(tl!("A clean-room, pure-Rust non-linear video editor. Part of the ArtCraft family."));
++    ui.add_space(6.0);
++    ui.label("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."); // CraftOffice
++    ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+     ui.add_space(10.0);
+     let mut link = |ui: &mut egui::Ui, id: &str, icon: Icon, label: &str, url: &str, primary: bool| {
+         let size = egui::vec2(ui.available_width(), if primary { 36.0 } else { 28.0 });

@@ -1,0 +1,13 @@
+diff --git a/crates/ui-egui/src/dialogs/dispatch.rs b/crates/ui-egui/src/dialogs/dispatch.rs
+index 2e95bda..aa76a5d 100644
+--- a/crates/ui-egui/src/dialogs/dispatch.rs
++++ b/crates/ui-egui/src/dialogs/dispatch.rs
+@@ -1201,7 +1201,7 @@ fn about_dialog(ui: &mut Ui, d: &mut Dialog) -> bool {
+             // CraftOffice: the suite's own credit.
+             ui.add_space(8.0);
+             ui.label(egui::RichText::new(tl!("CraftOffice edition by AndyBcx: Hungarian and Romanian interface, spelling, autocorrect and thesaurus.")).font(semibold(13.0)));
+-            ui.hyperlink_to(tl!("CraftOffice: github.com/AndyBcx/Office"), "https://github.com/AndyBcx/Office");
++            ui.hyperlink_to(tl!("CraftOffice: github.com/AndyBcx/CraftOffice"), "https://github.com/AndyBcx/CraftOffice");
+         }
+     }
+     // One Close button: About has nothing to cancel.

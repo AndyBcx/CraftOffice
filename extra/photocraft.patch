@@ -1,0 +1,18 @@
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index 3477647..a06cb3a 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -842,6 +842,13 @@ fn about_tab_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, tab: &str) {
+         _ => {
+             ui.label(tl!("PhotoCraft — an open-source, native image editor written in Rust."));
+             ui.label(crate::i18n::fmt(tl!("Version {version}"), &[("version", &photocraft_engine::build_info::long_version())]));
++            ui.add_space(6.0);
++            ui.label(match crate::i18n::current().code() {
++                "hu" => "CraftOffice-kiadás – AndyBcx: magyar és román felület.",
++                "ro" => "Ediția CraftOffice de AndyBcx: interfață în maghiară și română.",
++                _ => "CraftOffice edition by AndyBcx: Hungarian and Romanian interface.",
++            }); // CraftOffice
++            ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+             ui.add_space(12.0);
+             ui.vertical_centered(|ui| {
+                 crate::links::discord_button(app, ui, 220.0);

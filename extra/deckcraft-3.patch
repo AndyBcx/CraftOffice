@@ -1,0 +1,32 @@
+diff --git a/apps/deckcraft/src/craftoffice_i18n/hu.tsv b/apps/deckcraft/src/craftoffice_i18n/hu.tsv
+index 96a250b..e35706f 100644
+--- a/apps/deckcraft/src/craftoffice_i18n/hu.tsv
++++ b/apps/deckcraft/src/craftoffice_i18n/hu.tsv
+@@ -2021,3 +2021,4 @@ A password is required to open this presentation.	A bemutató megnyitásához je
+ Anyone can open this presentation. Encrypt it with a password to keep it private.	Bárki megnyithatja ezt a bemutatót. Titkosítsd jelszóval, hogy más ne lássa.
+ Remove Password	Jelszó eltávolítása
+ The presentation will be saved with a password.	A bemutató jelszóval lesz mentve.
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	CraftOffice-kiadás – AndyBcx: magyar és román felület.
+diff --git a/apps/deckcraft/src/craftoffice_i18n/ro.tsv b/apps/deckcraft/src/craftoffice_i18n/ro.tsv
+index 1f7503d..1add29d 100644
+--- a/apps/deckcraft/src/craftoffice_i18n/ro.tsv
++++ b/apps/deckcraft/src/craftoffice_i18n/ro.tsv
+@@ -2021,3 +2021,4 @@ A password is required to open this presentation.	Este necesară o parolă pentr
+ Anyone can open this presentation. Encrypt it with a password to keep it private.	Oricine poate deschide această prezentare. Criptați-o cu o parolă pentru a o păstra privată.
+ Remove Password	Eliminare parolă
+ The presentation will be saved with a password.	Prezentarea va fi salvată cu parolă.
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
+diff --git a/crates/ui-egui/src/dialogs/about.rs b/crates/ui-egui/src/dialogs/about.rs
+index 059543b..2313411 100644
+--- a/crates/ui-egui/src/dialogs/about.rs
++++ b/crates/ui-egui/src/dialogs/about.rs
+@@ -30,6 +30,9 @@ pub fn about(_app: &mut SlideApp, ui: &mut Ui) {
+         ui.hyperlink_to("getartcraft.com/apps/deckcraft", deckcraft_engine::links::APP_PAGE);
+         ui.hyperlink_to("Source on GitHub", deckcraft_engine::links::GITHUB);
+         ui.add_space(6.0);
++        ui.label("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."); // CraftOffice
++        ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
++        ui.add_space(6.0);
+         ui.label(egui::RichText::new("MIT OR Apache-2.0 · © 2026 ArtCraft Team and the DeckCraft contributors").size(11.0).color(t.text_faint));
+     });
+ }

@@ -10,7 +10,7 @@ index e0406a2..c62a891 100644
 +	The spelling and hyphenation data WordCraft uses, and their licences.	A WordCraft által használt helyesírási és elválasztási adatok és licenceik.
 +	Installed languages (CraftOffice)	Telepített nyelvek (CraftOffice)
 +	CraftOffice edition by AndyBcx: Hungarian and Romanian interface, spelling, autocorrect and thesaurus.	CraftOffice kiadás – AndyBcx: magyar és román felület, helyesírás, automatikus javítás és szinonimaszótár.
-+	CraftOffice: github.com/AndyBcx/Office	CraftOffice: github.com/AndyBcx/Office
++	CraftOffice: github.com/AndyBcx/CraftOffice	CraftOffice: github.com/AndyBcx/CraftOffice
 diff --git a/locales/ro/wordcraft.tsv b/locales/ro/wordcraft.tsv
 index 3e4e8b6..af3e05c 100644
 --- a/locales/ro/wordcraft.tsv
@@ -23,4 +23,4 @@ index 3e4e8b6..af3e05c 100644
 +	The spelling and hyphenation data WordCraft uses, and their licences.	Datele de ortografie și despărțire în silabe folosite de WordCraft și licențele lor.
 +	Installed languages (CraftOffice)	Limbi instalate (CraftOffice)
 +	CraftOffice edition by AndyBcx: Hungarian and Romanian interface, spelling, autocorrect and thesaurus.	Ediția CraftOffice de AndyBcx: interfață, ortografie, corectare automată și dicționar de sinonime în maghiară și română.
-+	CraftOffice: github.com/AndyBcx/Office	CraftOffice: github.com/AndyBcx/Office
++	CraftOffice: github.com/AndyBcx/CraftOffice	CraftOffice: github.com/AndyBcx/CraftOffice

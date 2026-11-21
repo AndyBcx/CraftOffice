@@ -1,0 +1,26 @@
+diff --git a/apps/gridcraft/src/craftoffice_i18n/hu.tsv b/apps/gridcraft/src/craftoffice_i18n/hu.tsv
+index e69de29..f0ec8d9 100644
+--- a/apps/gridcraft/src/craftoffice_i18n/hu.tsv
++++ b/apps/gridcraft/src/craftoffice_i18n/hu.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	CraftOffice-kiadás – AndyBcx: magyar és román felület.
+diff --git a/apps/gridcraft/src/craftoffice_i18n/ro.tsv b/apps/gridcraft/src/craftoffice_i18n/ro.tsv
+index e69de29..440a9dd 100644
+--- a/apps/gridcraft/src/craftoffice_i18n/ro.tsv
++++ b/apps/gridcraft/src/craftoffice_i18n/ro.tsv
+@@ -0,0 +1 @@
++CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
+diff --git a/crates/ui-egui/src/dialogs/about.rs b/crates/ui-egui/src/dialogs/about.rs
+index a95878e..b468d2d 100644
+--- a/crates/ui-egui/src/dialogs/about.rs
++++ b/crates/ui-egui/src/dialogs/about.rs
+@@ -21,6 +21,9 @@ pub(super) fn about(ui: &mut egui::Ui, d: &mut Dialog) {
+             ui.label("A clean-room, open-source, Rust-native spreadsheet. Part of ArtCraft.");
+             ui.hyperlink_to("getartcraft.com/apps/gridcraft", "https://getartcraft.com/apps/gridcraft");
+             ui.hyperlink_to("Join the ArtCraft Discord", "https://discord.gg/artcraft");
++            ui.add_space(6.0);
++            ui.label("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."); // CraftOffice
++            ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+         }
+     }
+ }
