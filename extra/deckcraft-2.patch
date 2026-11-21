@@ -1,0 +1,464 @@
+diff --git a/apps/deckcraft/src/craftoffice_i18n/hu.tsv b/apps/deckcraft/src/craftoffice_i18n/hu.tsv
+index e8f905a..96a250b 100644
+--- a/apps/deckcraft/src/craftoffice_i18n/hu.tsv
++++ b/apps/deckcraft/src/craftoffice_i18n/hu.tsv
+@@ -2008,3 +2008,16 @@ Open as PDF instead	Megnyitás PDF-ként
+ Choose a printer first.	Előbb válasszon nyomtatót.
+ Sending the presentation to the printer…	A bemutató küldése a nyomtatóra…
+ Sent to the printer.	Elküldve a nyomtatóra.
++Password	Jelszó
++Password:	Jelszó:
++Reenter password:	Jelszó újra:
++Encrypt Presentation	Bemutató titkosítása
++This presentation is protected. Enter the password to open it.	Ez a bemutató védett. A megnyitásához add meg a jelszót.
++Encrypt the contents of this file. If you lose or forget the password, it cannot be recovered.	A fájl tartalmának titkosítása. Ha elveszíted vagy elfelejted a jelszót, nem lehet visszaállítani.
++Change Password	Jelszó módosítása
++Encrypt with Password	Titkosítás jelszóval
++Protect Presentation	Bemutató védelme
++A password is required to open this presentation.	A bemutató megnyitásához jelszó szükséges.
++Anyone can open this presentation. Encrypt it with a password to keep it private.	Bárki megnyithatja ezt a bemutatót. Titkosítsd jelszóval, hogy más ne lássa.
++Remove Password	Jelszó eltávolítása
++The presentation will be saved with a password.	A bemutató jelszóval lesz mentve.
+diff --git a/apps/deckcraft/src/craftoffice_i18n/ro.tsv b/apps/deckcraft/src/craftoffice_i18n/ro.tsv
+index 22e3086..1f7503d 100644
+--- a/apps/deckcraft/src/craftoffice_i18n/ro.tsv
++++ b/apps/deckcraft/src/craftoffice_i18n/ro.tsv
+@@ -2008,3 +2008,16 @@ Open as PDF instead	Deschidere ca PDF
+ Choose a printer first.	Alegeți mai întâi o imprimantă.
+ Sending the presentation to the printer…	Prezentarea se trimite la imprimantă…
+ Sent to the printer.	Trimis la imprimantă.
++Password	Parolă
++Password:	Parolă:
++Reenter password:	Reintroduceți parola:
++Encrypt Presentation	Criptare prezentare
++This presentation is protected. Enter the password to open it.	Această prezentare este protejată. Introduceți parola pentru a o deschide.
++Encrypt the contents of this file. If you lose or forget the password, it cannot be recovered.	Criptați conținutul acestui fișier. Dacă pierdeți sau uitați parola, aceasta nu poate fi recuperată.
++Change Password	Modificare parolă
++Encrypt with Password	Criptare cu parolă
++Protect Presentation	Protejare prezentare
++A password is required to open this presentation.	Este necesară o parolă pentru a deschide această prezentare.
++Anyone can open this presentation. Encrypt it with a password to keep it private.	Oricine poate deschide această prezentare. Criptați-o cu o parolă pentru a o păstra privată.
++Remove Password	Eliminare parolă
++The presentation will be saved with a password.	Prezentarea va fi salvată cu parolă.
+diff --git a/crates/engine/Cargo.toml b/crates/engine/Cargo.toml
+index cb1f4c2..7587264 100644
+--- a/crates/engine/Cargo.toml
++++ b/crates/engine/Cargo.toml
+@@ -18,6 +18,8 @@ deckcraft-render = { workspace = true }
+ deckcraft-pdf = { workspace = true }
+ deckcraft-format = { workspace = true }
+ deckcraft-pptx = { workspace = true }
++# CraftOffice: password-protected .pptx (open with the password, save encrypted)
++craft-offcrypto = { git = "https://github.com/storytold/craft-libs", rev = "bb57d422d0bc842cbde430955825553ab7b976f4" }
+ deckcraft-media = { workspace = true }
+ serde = { workspace = true }
+ serde_json = { workspace = true }
+diff --git a/crates/engine/src/cmd/file.rs b/crates/engine/src/cmd/file.rs
+index a1c781f..349754c 100644
+--- a/crates/engine/src/cmd/file.rs
++++ b/crates/engine/src/cmd/file.rs
+@@ -32,6 +32,8 @@ pub fn specs() -> Vec<CommandSpec> {
+             always,
+             adopt
+         ),
++        // CraftOffice: File › Info › Protect Presentation › Encrypt with Password.
++        cmd!(noundo "file.encrypt", "Encrypt with Password", ["File"], None, "{password: string, confirmPassword?: string (must match), or password: null | \"\" to remove it} → {encrypted} (.pptx saves are encrypted with it: Agile, AES-256)", has_doc, encrypt),
+         cmd!(noundo "file.openBytes", "Open Data", [], None, "{name, data: base64}", always, open_bytes),
+         cmd!(noundo "file.save", "Save", ["File"], Some("Cmd+S"), "{path?, format?: deckcraft|pptx}", has_doc, save),
+         cmd!(noundo "file.saveAs", "Save As…", ["File"], Some("Cmd+Shift+S"), "{path, format?}", has_doc, save_as),
+@@ -164,7 +166,7 @@ fn open_other(name: &str, bytes: &[u8]) -> Result<(Presentation, Vec<String>)> {
+         return Ok((p, lost_slides));
+     }
+     if deckcraft_pptx::is_encrypted(bytes) {
+-        return Err(EngineError::Other(format!("{name} is password-protected. DeckCraft can't open password-protected presentations yet.")));
++        return Err(EngineError::Other(format!("{name} {PASSWORD_REQUIRED}")));
+     }
+     let lower = name.to_ascii_lowercase();
+     let rtf = deckcraft_format::rtf::sniff_rtf(bytes);
+@@ -283,9 +285,51 @@ fn adopt_loaded(s: &mut Session, f: LoadedFile) -> Result<Value> {
+ #[cfg(not(target_arch = "wasm32"))]
+ fn open(s: &mut Session, p: &Value) -> Result<Value> {
+     let path = str_param(p, "path").ok_or_else(|| bad("file.open", "missing `path`"))?;
++    // CraftOffice: a password-protected .pptx opens with its password and keeps it for Save.
++    if let Some(pw) = str_param(p, "password").filter(|pw| !pw.is_empty()) {
++        let bytes = crate::io::read_file(path).map_err(EngineError::Other)?;
++        if !deckcraft_pptx::is_encrypted(&bytes) {
++            return adopt_loaded(s, loaded_file(path, &bytes)?);
++        }
++        let plain = craft_offcrypto::decrypt(&bytes, Some(pw)).map_err(|_| EngineError::Other(WRONG_PASSWORD.into()))?;
++        let r = adopt_loaded(s, loaded_file(path, &plain)?)?;
++        let st = s.doc_mut()?;
++        st.password = Some(pw.to_string());
++        return Ok(r);
++    }
+     adopt_loaded(s, read_presentation_file(path)?)
+ }
+ 
++/// CraftOffice: the open error of a password-protected presentation contains this.
++pub const PASSWORD_REQUIRED: &str = "is password-protected. Enter its password to open it.";
++/// CraftOffice: the open error for a wrong password.
++pub const WRONG_PASSWORD: &str = "The password is incorrect.";
++
++/// CraftOffice: File › Info › Protect Presentation › Encrypt with Password: set (or with `null`
++/// or "" remove) the password the next `.pptx` saves are encrypted with.
++fn encrypt(s: &mut Session, p: &Value) -> Result<Value> {
++    let password = match p.get("password") {
++        None | Some(Value::Null) => None,
++        Some(Value::String(pw)) if pw.is_empty() => None,
++        Some(Value::String(pw)) => Some(pw.clone()),
++        Some(_) => return Err(bad("file.encrypt", "`password` must be a string, or null to remove the password")),
++    };
++    if let (Some(pw), Some(confirm)) = (&password, str_param(p, "confirmPassword"))
++        && pw != confirm
++    {
++        return Err(bad("file.encrypt", "The passwords don't match. Type the same password in both boxes."));
++    }
++    if password.as_ref().is_some_and(|pw| pw.chars().count() > 255) {
++        return Err(bad("file.encrypt", "The password can have at most 255 characters."));
++    }
++    let st = s.doc_mut()?;
++    if st.password != password {
++        st.password = password;
++        st.password_changed = true;
++    }
++    Ok(json!({"encrypted": st.password.is_some()}))
++}
++
+ /// `file.adopt {path, token?}`: add the presentation a host read in the background and staged
+ /// with [`Session::stage_loaded`]. Without that staged file (a replayed journal, a stale token)
+ /// it reads `path` like `file.open`, so the journal entry stays replayable.
+@@ -506,8 +550,17 @@ fn save(s: &mut Session, p: &Value) -> Result<Value> {
+     };
+     let format = str_param(p, "format").unwrap_or(format_for_path(&path));
+     let bytes = save_bytes(&s.doc()?.doc, format)?;
++    // CraftOffice: a PowerPoint file of a presentation with a password is written encrypted.
++    let ppt = matches!(format, "pptx" | "potx" | "ppsx");
++    let bytes = match (&s.doc()?.password, ppt) {
++        (Some(pw), true) => craft_offcrypto::encrypt(&bytes, pw).map_err(|e| EngineError::Other(e.to_string()))?,
++        _ => bytes,
++    };
+     write_file(&path, &bytes)?;
+     mark_saved(s, Some(path.clone()))?;
++    if ppt {
++        s.doc_mut()?.password_changed = false;
++    }
+     Ok(json!({"path": path, "bytes": bytes.len()}))
+ }
+ 
+@@ -682,6 +735,7 @@ fn info(s: &mut Session, _p: &Value) -> Result<Value> {
+         "sections": doc.sections.len(),
+         "bytes": bytes,
+         "properties": serde_json::to_value(&doc.props).unwrap_or_default(),
++        "encrypted": st.password.is_some(),
+     }))
+ }
+ 
+@@ -837,3 +891,44 @@ mod tests {
+         let _ = std::fs::remove_dir_all(&dir);
+     }
+ }
++
++#[cfg(all(test, not(target_arch = "wasm32")))]
++mod craftoffice_encrypt_tests {
++    use serde_json::json;
++
++    use crate::Session;
++
++    #[test]
++    fn a_presentation_saves_encrypted_and_reopens_with_its_password() {
++        const PW: &str = "synthetic-pw-3141";
++        let dir = std::env::temp_dir().join(format!("deckcraft-encrypt-{}", std::process::id()));
++        std::fs::create_dir_all(&dir).unwrap();
++        let path = dir.join("Secret.pptx");
++        let path_s = path.to_str().unwrap();
++        let mut s = Session::new();
++        s.execute("file.new", &json!({})).unwrap();
++        assert!(s.execute("file.encrypt", &json!({"password": PW, "confirmPassword": "other"})).is_err());
++        assert_eq!(s.execute("file.encrypt", &json!({"password": PW, "confirmPassword": PW})).unwrap()["encrypted"], true);
++        assert!(s.doc().unwrap().is_dirty());
++        s.execute("file.save", &json!({"path": path_s})).unwrap();
++        assert!(!s.doc().unwrap().is_dirty());
++        let bytes = std::fs::read(&path).unwrap();
++        assert!(deckcraft_pptx::is_encrypted(&bytes), "saved encrypted");
++        let journal = serde_json::to_string(&s.journal).unwrap();
++        assert!(!journal.contains(PW), "the password never reaches the journal");
++
++        let mut t = Session::new();
++        let e = t.execute("file.open", &json!({"path": path_s})).unwrap_err().to_string();
++        assert!(e.contains(super::PASSWORD_REQUIRED), "{e}");
++        let e = t.execute("file.open", &json!({"path": path_s, "password": "wrong"})).unwrap_err().to_string();
++        assert!(e.contains(super::WRONG_PASSWORD), "{e}");
++        t.execute("file.open", &json!({"path": path_s, "password": PW})).unwrap();
++        assert_eq!(t.doc().unwrap().password.as_deref(), Some(PW));
++        assert_eq!(t.doc().unwrap().path.as_deref(), Some(path_s));
++        // Removing the password: the next save is a plain .pptx again.
++        t.execute("file.encrypt", &json!({"password": null})).unwrap();
++        t.execute("file.save", &json!({})).unwrap();
++        assert!(!deckcraft_pptx::is_encrypted(&std::fs::read(&path).unwrap()));
++        std::fs::remove_dir_all(dir).unwrap();
++    }
++}
+diff --git a/crates/engine/src/lib.rs b/crates/engine/src/lib.rs
+index 754a64f..64b3fec 100644
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -237,6 +237,12 @@ pub struct DocState {
+     /// The list AutoFormat just started from a typed `* ` or `1. `, so Backspace right after
+     /// can put the typed text back.
+     pub auto_list: Option<cmd::text::AutoList>,
++    /// CraftOffice: File › Info › Protect Presentation › Encrypt with Password. A `.pptx` save is
++    /// encrypted with it (Agile, AES-256), as PowerPoint does; a presentation opened with its
++    /// password keeps it. Never written into the file itself, never journaled.
++    pub password: Option<String>,
++    /// CraftOffice: the password changed since the last save.
++    pub password_changed: bool,
+ }
+ 
+ static NEXT_UID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+@@ -266,10 +272,12 @@ impl DocState {
+             compare: None,
+             last_duplicate: None,
+             auto_list: None,
++            password: None,
++            password_changed: false,
+         }
+     }
+     pub fn is_dirty(&self) -> bool {
+-        !Arc::ptr_eq(&self.doc, &self.saved_doc)
++        self.password_changed || !Arc::ptr_eq(&self.doc, &self.saved_doc)
+     }
+     pub fn title(&self) -> String {
+         self.path
+@@ -690,7 +698,16 @@ impl Session {
+             push_undo(st, HistoryEntry { label: spec.label.to_string(), doc: old, selection: sel, vertex_kind });
+         }
+         if spec.journal && outer {
+-            self.journal.push((id.to_string(), params.clone()));
++            // CraftOffice: passwords never reach the journal.
++            let mut params = params.clone();
++            if let Some(o) = params.as_object_mut() {
++                for k in ["password", "confirmPassword"] {
++                    if o.get(k).is_some_and(|v| v.is_string()) {
++                        o.insert(k.to_string(), Value::String("•••".into()));
++                    }
++                }
++            }
++            self.journal.push((id.to_string(), params));
+             if self.journal.len() > 10_000 {
+                 self.journal.drain(..1000);
+             }
+diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
+index 8cc5325..7e7f483 100644
+--- a/crates/ui-egui/src/app.rs
++++ b/crates/ui-egui/src/app.rs
+@@ -305,6 +305,8 @@ impl SlideApp {
+         canvas::trackpad_twist(self, &ctx);
+         eyedropper::tick(self, &ctx);
+         self.opening_ui(&ctx);
++        // CraftOffice: password prompts (open a protected .pptx, Encrypt with Password)
++        crate::password::show(self, &ctx);
+         if self.show.is_some() {
+             self.anim_preview = None;
+             show::ui(self, ui);
+diff --git a/crates/ui-egui/src/app/files.rs b/crates/ui-egui/src/app/files.rs
+index 3ec5920..0c4f047 100644
+--- a/crates/ui-egui/src/app/files.rs
++++ b/crates/ui-egui/src/app/files.rs
+@@ -306,7 +306,16 @@ impl SlideApp {
+     }
+ 
+     pub fn open_path(&mut self, path: &str) -> Result<(), String> {
+-        self.session.execute("file.open", &json!({"path": path})).map_err(|e| e.to_string())?;
++        match self.session.execute("file.open", &json!({"path": path})) {
++            // CraftOffice: a password-protected presentation asks for its password.
++            Err(e) if crate::password::needs_password(&e.to_string()) => {
++                crate::password::ask_open(path);
++                return Ok(());
++            }
++            r => {
++                r.map_err(|e| e.to_string())?;
++            }
++        }
+         self.note_recent(path);
+         Ok(())
+     }
+diff --git a/crates/ui-egui/src/backstage/info.rs b/crates/ui-egui/src/backstage/info.rs
+index 3ddbda1..52c3df1 100644
+--- a/crates/ui-egui/src/backstage/info.rs
++++ b/crates/ui-egui/src/backstage/info.rs
+@@ -76,6 +76,19 @@ pub(super) fn info(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage) {
+             if task(ui, Icon::ResetSlide, "Revert", "Manage Presentation", detail, can_revert) {
+                 let _ = app.run("file.revert", json!({}));
+             }
++            // CraftOffice: Protect Presentation › Encrypt with Password.
++            let encrypted = v.get("encrypted").and_then(Value::as_bool).unwrap_or(false);
++            let detail = if encrypted {
++                "A password is required to open this presentation."
++            } else {
++                "Anyone can open this presentation. Encrypt it with a password to keep it private."
++            };
++            if task(ui, Icon::Lock, if encrypted { "Change Password" } else { "Encrypt with Password" }, "Protect Presentation", detail, true) {
++                crate::password::ask_encrypt();
++            }
++            if encrypted && ui.link("Remove Password").clicked() {
++                let _ = app.run("file.encrypt", json!({"password": null}));
++            }
+         });
+         ui.add_space(30.0);
+         ui.vertical(|ui| {
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 5c826b1..b409fd8 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -52,6 +52,7 @@ mod app;
+ mod clock;
+ mod ime_hooks;
+ pub mod panels;
++pub mod password;
+ mod services;
+ mod state;
+ 
+diff --git a/crates/ui-egui/src/opening.rs b/crates/ui-egui/src/opening.rs
+index 5bbd0a3..e643709 100644
+--- a/crates/ui-egui/src/opening.rs
++++ b/crates/ui-egui/src/opening.rs
+@@ -92,6 +92,8 @@ impl SlideApp {
+                     Err(e) => self.notify(e.to_string()),
+                 }
+             }
++            // CraftOffice: a password-protected presentation asks for its password.
++            Err(e) if crate::password::needs_password(&e) => crate::password::ask_open(&o.path),
+             // Over the start screen too, like a failed file.open (#346).
+             Err(e) => self.notify(e),
+         }
+diff --git a/crates/ui-egui/src/password.rs b/crates/ui-egui/src/password.rs
+new file mode 100644
+index 0000000..c6dd4e2
+--- /dev/null
++++ b/crates/ui-egui/src/password.rs
+@@ -0,0 +1,125 @@
++//! CraftOffice: the password prompts of Slides. Opening a password-protected `.pptx` asks for
++//! its password; File › Info › Encrypt with Password sets the one Save encrypts with.
++
++use std::cell::RefCell;
++
++use serde_json::json;
++
++use crate::SlideApp;
++
++enum Kind {
++    /// Open the file at this path with the password.
++    Open(String),
++    /// Set the active presentation's password.
++    Encrypt,
++}
++
++struct Prompt {
++    kind: Kind,
++    password: String,
++    confirm: String,
++    error: Option<String>,
++}
++
++thread_local! {
++    static PROMPT: RefCell<Option<Prompt>> = const { RefCell::new(None) };
++}
++
++/// A UI string through the egui text hook (the CraftOffice translation catalogs).
++fn crate_tr(s: &'static str) -> String {
++    egui::WidgetText::from(s).text().to_string()
++}
++
++/// Ask for the password of the presentation at `path`.
++pub fn ask_open(path: &str) {
++    PROMPT.with_borrow_mut(|p| *p = Some(Prompt { kind: Kind::Open(path.to_string()), password: String::new(), confirm: String::new(), error: None }));
++}
++
++/// Ask for the password to encrypt the active presentation with.
++pub fn ask_encrypt() {
++    PROMPT.with_borrow_mut(|p| *p = Some(Prompt { kind: Kind::Encrypt, password: String::new(), confirm: String::new(), error: None }));
++}
++
++/// The error of an open that needs a password.
++pub fn needs_password(error: &str) -> bool {
++    error.contains(deckcraft_engine::cmd::file::PASSWORD_REQUIRED)
++}
++
++/// Draw the prompt, if one is open. Call once a frame.
++pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
++    let Some(mut prompt) = PROMPT.with_borrow_mut(Option::take) else { return };
++    let mut close = false;
++    let mut submit = false;
++    let (title, text) = match &prompt.kind {
++        Kind::Open(path) => {
++            let name = std::path::Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(path).to_string();
++            ("Password", format!("{name}\n{}", crate_tr("This presentation is protected. Enter the password to open it.")))
++        }
++        Kind::Encrypt => ("Encrypt Presentation", crate_tr("Encrypt the contents of this file. If you lose or forget the password, it cannot be recovered.").to_string()),
++    };
++    egui::Modal::new(egui::Id::new("craftoffice-password")).show(ctx, |ui| {
++        ui.set_width(360.0);
++        ui.heading(title);
++        ui.add_space(4.0);
++        ui.label(text);
++        ui.add_space(8.0);
++        let l = ui.label("Password:");
++        let r = ui.add(egui::TextEdit::singleline(&mut prompt.password).password(true).desired_width(f32::INFINITY)).labelled_by(l.id);
++        if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && matches!(prompt.kind, Kind::Open(_)) {
++            submit = true;
++        }
++        if matches!(prompt.kind, Kind::Encrypt) {
++            let l = ui.label("Reenter password:");
++            let r = ui.add(egui::TextEdit::singleline(&mut prompt.confirm).password(true).desired_width(f32::INFINITY)).labelled_by(l.id);
++            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
++                submit = true;
++            }
++        }
++        if let Some(e) = &prompt.error {
++            ui.add_space(4.0);
++            ui.colored_label(ui.visuals().error_fg_color, e.as_str());
++        }
++        ui.add_space(8.0);
++        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
++            if ui.button("Cancel").clicked() {
++                close = true;
++            }
++            if ui.add_enabled(!prompt.password.is_empty(), egui::Button::new("OK")).clicked() {
++                submit = true;
++            }
++        });
++    });
++    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
++        close = true;
++    }
++    if submit && !prompt.password.is_empty() {
++        let result = match &prompt.kind {
++            Kind::Open(path) => app.session.execute("file.open", &json!({"path": path, "password": prompt.password})).map(|_| app.note_recent(path)),
++            Kind::Encrypt => app
++                .session
++                .execute("file.encrypt", &json!({"password": prompt.password, "confirmPassword": prompt.confirm}))
++                .map(|_| app.set_status("The presentation will be saved with a password.")),
++        };
++        match result {
++            Ok(()) => close = true,
++            Err(e) => {
++                prompt.error = Some(e.to_string());
++                prompt.password.clear();
++                prompt.confirm.clear();
++            }
++        }
++    }
++    if !close {
++        PROMPT.with_borrow_mut(|p| *p = Some(prompt));
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    #[test]
++    fn the_open_error_of_a_protected_file_asks_for_the_password() {
++        let e = format!("Deck.pptx {}", deckcraft_engine::cmd::file::PASSWORD_REQUIRED);
++        assert!(super::needs_password(&e));
++        assert!(!super::needs_password("Deck.pptx: not a presentation DeckCraft can read"));
++    }
++}

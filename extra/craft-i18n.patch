@@ -1,0 +1,26 @@
+diff --git a/locales/hu/wordcraft.tsv b/locales/hu/wordcraft.tsv
+index e0406a2..c62a891 100644
+--- a/locales/hu/wordcraft.tsv
++++ b/locales/hu/wordcraft.tsv
+@@ -2591,3 +2591,8 @@
+ @msg	a diagram holds at most {MAX_ITEMS} items	egy diagram legfeljebb {MAX_ITEMS} elemet tartalmazhat
+ @msg	unknown decorative text style `{id}`	ismeretlen díszítő szövegstílus: `{id}`
+ 	select a shape or decorative text first	először jelöljön ki egy alakzatot vagy díszítő szöveget
++	Language data	Nyelvi adatok
++	The spelling and hyphenation data WordCraft uses, and their licences.	A WordCraft által használt helyesírási és elválasztási adatok és licenceik.
++	Installed languages (CraftOffice)	Telepített nyelvek (CraftOffice)
++	CraftOffice edition by AndyBcx: Hungarian and Romanian interface, spelling, autocorrect and thesaurus.	CraftOffice kiadás – AndyBcx: magyar és román felület, helyesírás, automatikus javítás és szinonimaszótár.
++	CraftOffice: github.com/AndyBcx/Office	CraftOffice: github.com/AndyBcx/Office
+diff --git a/locales/ro/wordcraft.tsv b/locales/ro/wordcraft.tsv
+index 3e4e8b6..af3e05c 100644
+--- a/locales/ro/wordcraft.tsv
++++ b/locales/ro/wordcraft.tsv
+@@ -3020,3 +3020,8 @@ preview	Title	Titlu
+ @msg	a diagram holds at most {MAX_ITEMS} items	o diagramă poate conține cel mult {MAX_ITEMS} elemente
+ @msg	unknown decorative text style `{id}`	stil de text decorativ necunoscut `{id}`
+ 	select a shape or decorative text first	selectați mai întâi o formă sau un text decorativ
++	Language data	Date lingvistice
++	The spelling and hyphenation data WordCraft uses, and their licences.	Datele de ortografie și despărțire în silabe folosite de WordCraft și licențele lor.
++	Installed languages (CraftOffice)	Limbi instalate (CraftOffice)
++	CraftOffice edition by AndyBcx: Hungarian and Romanian interface, spelling, autocorrect and thesaurus.	Ediția CraftOffice de AndyBcx: interfață, ortografie, corectare automată și dicționar de sinonime în maghiară și română.
++	CraftOffice: github.com/AndyBcx/Office	CraftOffice: github.com/AndyBcx/Office

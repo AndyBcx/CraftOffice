@@ -1,0 +1,117 @@
+diff --git a/crates/engine/src/cmd/view.rs b/crates/engine/src/cmd/view.rs
+index c17adf2..78f0d84 100644
+--- a/crates/engine/src/cmd/view.rs
++++ b/crates/engine/src/cmd/view.rs
+@@ -147,8 +147,11 @@ pub fn specs() -> Vec<CommandSpec> {
+         CommandSpec::new("view.switchWindows", "Switch Windows", "View › Window", switch_windows)
+             .params(r#"{"id"?: n (make this open document the active one), "window"?: n (make this open window the active one)} → {"documents": [{"id", "title", "path", "dirty", "active"}]} in the order they were opened"#)
+             .pure(),
++        // CraftOffice: Split shows the document twice: a second window on the same document,
++        // the two arranged on the screen, each scrolling on its own (Word splits one window).
+         CommandSpec::new("view.split", "Split", "View › Window", |s, _| {
+-            s.push_ui_request(json!({"toggle": "split"}));
++            s.push_ui_request(json!({"open": "newWindow"}));
++            s.ui_requests.push(json!({"windows": "arrange"}));
+             sel_result(s)
+         })
+         .key("Mod+Alt+S")
+diff --git a/crates/engine/src/langdata.rs b/crates/engine/src/langdata.rs
+index c04b0f5..83835b3 100644
+--- a/crates/engine/src/langdata.rs
++++ b/crates/engine/src/langdata.rs
+@@ -352,3 +352,54 @@ mod tests {
+         assert_eq!(l.replacement("x"), None);
+     }
+ }
++
++/// CraftOffice: the language data installed beside the built-in English (Hungarian, Romanian and
++/// any other Hunspell dictionary, hyphenation pattern, autocorrect list and thesaurus in the
++/// dictionaries folders), each as (title, licence or readme text), for Help › About › Language data.
++pub fn installed_language_data() -> Vec<(String, String)> {
++    let mut out: Vec<(String, String)> = Vec::new();
++    let mut seen = std::collections::BTreeSet::new();
++    for d in dirs() {
++        let Ok(rd) = std::fs::read_dir(&d) else { continue };
++        let mut files: Vec<PathBuf> = rd.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.path()).collect();
++        files.sort();
++        let readme = |stem: &str| -> String {
++            let want = [format!("readme_{}.txt", stem.to_lowercase()), format!("readme_{}.txt", stem.to_lowercase().trim_start_matches("hyph_"))];
++            files
++                .iter()
++                .find(|f| f.file_name().and_then(|n| n.to_str()).is_some_and(|n| want.contains(&n.to_lowercase())))
++                .and_then(|f| read_capped(f))
++                .map(|b| String::from_utf8_lossy(&b).into_owned())
++                .unwrap_or_default()
++        };
++        for f in &files {
++            let Some(name) = f.file_name().and_then(|n| n.to_str()) else { continue };
++            let lower = name.to_lowercase();
++            let Some(stem) = name.rsplit_once('.').map(|(s, _)| s) else { continue };
++            let title = if lower.starts_with("hyph_") && lower.ends_with(".dic") {
++                format!("{}: hyphenation ({name})", stem.trim_start_matches("hyph_"))
++            } else if lower.ends_with(".dic") {
++                format!("{stem}: spelling dictionary ({name})")
++            } else if lower.starts_with("acor_") && lower.ends_with(".dat") {
++                format!("{}: autocorrect list ({name})", stem.trim_start_matches("acor_"))
++            } else if lower.starts_with("th_") && lower.ends_with(".dat") {
++                format!("{}: thesaurus ({name})", stem.trim_start_matches("th_").trim_end_matches("_v2"))
++            } else {
++                continue;
++            };
++            if !seen.insert(lower.clone()) {
++                continue;
++            }
++            let lang = stem.trim_start_matches("hyph_").trim_start_matches("acor_").trim_start_matches("th_").trim_end_matches("_v2");
++            let mut text = readme(stem);
++            if text.is_empty() {
++                text = readme(&lang.replace('-', "_"));
++            }
++            if text.is_empty() {
++                text = format!("{}\n(LibreOffice language data; see the licence that came with it.)", f.display());
++            }
++            out.push((title, text));
++        }
++    }
++    out
++}
+diff --git a/crates/ui-egui/src/dialogs/dispatch.rs b/crates/ui-egui/src/dialogs/dispatch.rs
+index 4d682cc..2e95bda 100644
+--- a/crates/ui-egui/src/dialogs/dispatch.rs
++++ b/crates/ui-egui/src/dialogs/dispatch.rs
+@@ -1198,6 +1198,10 @@ fn about_dialog(ui: &mut Ui, d: &mut Dialog) -> bool {
+             ui.hyperlink_to(tl!("Source code: github.com/storytold/wordcraft"), "https://github.com/storytold/wordcraft");
+             ui.add_space(6.0);
+             ui.label(egui::RichText::new(tl!("MIT OR Apache-2.0. Copyright (c) 2026 ArtCraft Team and the WordCraft contributors.")).small().weak());
++            // CraftOffice: the suite's own credit.
++            ui.add_space(8.0);
++            ui.label(egui::RichText::new(tl!("CraftOffice edition by AndyBcx: Hungarian and Romanian interface, spelling, autocorrect and thesaurus.")).font(semibold(13.0)));
++            ui.hyperlink_to(tl!("CraftOffice: github.com/AndyBcx/Office"), "https://github.com/AndyBcx/Office");
+         }
+     }
+     // One Close button: About has nothing to cancel.
+diff --git a/crates/ui-egui/src/language_packs.rs b/crates/ui-egui/src/language_packs.rs
+index 606c6f5..4e7b30f 100644
+--- a/crates/ui-egui/src/language_packs.rs
++++ b/crates/ui-egui/src/language_packs.rs
+@@ -874,6 +874,21 @@ pub(crate) fn about_tab(ui: &mut Ui) {
+         .max_height(ABOUT_HEIGHT)
+         .auto_shrink([false, false])
+         .show(ui, |ui| {
++            // CraftOffice: the Hungarian, Romanian and other installed language data first.
++            let installed = wordcraft_engine::langdata::installed_language_data();
++            if !installed.is_empty() {
++                ui.label(RichText::new(tl!("Installed languages (CraftOffice)")).font(semibold(13.0)));
++                for (title, text) in &installed {
++                    egui::CollapsingHeader::new(RichText::new(title.as_str()).font(semibold(13.0))).id_salt(("craftoffice_language_data", title.as_str())).show(
++                        ui,
++                        |ui| {
++                            ui.add(egui::Label::new(RichText::new(text).small().monospace()).wrap());
++                        },
++                    );
++                }
++                ui.add_space(6.0);
++                ui.label(RichText::new(tl!("Built in")).font(semibold(13.0)));
++            }
+             for (title, text) in texts.iter() {
+                 egui::CollapsingHeader::new(RichText::new(title.as_str()).font(semibold(13.0))).id_salt(("language_data", title.as_str())).show(
+                     ui,

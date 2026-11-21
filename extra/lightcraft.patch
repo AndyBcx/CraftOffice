@@ -1,0 +1,477 @@
+diff --git a/apps/lightcraft/Cargo.toml b/apps/lightcraft/Cargo.toml
+index da75475..a6c659f 100644
+--- a/apps/lightcraft/Cargo.toml
++++ b/apps/lightcraft/Cargo.toml
+@@ -42,6 +42,8 @@ winresource = "0.1"
+ winit = { version = "0.30", default-features = false, features = ["x11"] }
+ 
+ [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
++# CraftOffice: File › Print… to a system printer
++craft-print = { git = "https://github.com/storytold/craft-libs", rev = "6e03f65bf45181db77ba6229716e6624db9eb25b" }
+ rfd = { workspace = true }
+ 
+ [target.'cfg(target_os = "linux")'.dependencies]
+diff --git a/apps/lightcraft/src/session.rs b/apps/lightcraft/src/session.rs
+index 52a5a5b..174b34e 100644
+--- a/apps/lightcraft/src/session.rs
++++ b/apps/lightcraft/src/session.rs
+@@ -11,6 +11,29 @@ pub(crate) fn services(cc: &eframe::CreationContext<'_>, log_file: Option<&std::
+     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+     let _ = DIALOG_PARENT.set(rfd::FileDialog::new().set_parent(cc));
+     Services {
++        // CraftOffice: File › Print… straight to a printer
++        printers: Some(std::sync::Arc::new(|| {
++            craft_print::printers()
++                .into_iter()
++                .map(|p| lightcraft_ui_egui::PrinterInfo { name: p.name, label: p.description, default: p.default })
++                .collect()
++        })),
++        print_pdf: Some(std::sync::Arc::new(|pdf: &[u8], j: &lightcraft_ui_egui::PrintJob| {
++            let job = craft_print::Job {
++                printer: Some(j.printer.clone()),
++                copies: j.copies.clamp(1, 999),
++                duplex: Some(match j.duplex {
++                    1 => craft_print::Duplex::LongEdge,
++                    2 => craft_print::Duplex::ShortEdge,
++                    _ => craft_print::Duplex::Off,
++                }),
++                grayscale: j.grayscale,
++                scaling: craft_print::Scaling::Exact,
++                title: j.title.clone(),
++                ..Default::default()
++            };
++            craft_print::submit(pdf, &job).map(|_| ()).map_err(|e| e.to_string())
++        })),
+         local_places: None,
+         // Commands' file dialogs run on their own thread (#191): a dialog on the UI thread
+         // stopped the window answering the compositor, which then reported the app as hung.
+diff --git a/crates/ui-egui/locales/hu.json b/crates/ui-egui/locales/hu.json
+index fa561ef..fc34752 100644
+--- a/crates/ui-egui/locales/hu.json
++++ b/crates/ui-egui/locales/hu.json
+@@ -437,6 +437,7 @@
+   "Convert to DNG": "Konvertálás DNG-be",
+   "Cool Fade": "Hűvös fakulás",
+   "Cool Morning": "Hűvös reggel",
++  "Copies:": "Példányszám:",
+   "Copy": "Másolás",
+   "Copy After's Settings to Before": "Az Utána beállításainak másolása az Előttébe",
+   "Copy Before to After": "Előtte másolása az Utánába",
+@@ -1197,6 +1198,7 @@
+   "Long Edge": "Hosszabb oldal",
+   "Looking for changes": "Változások keresése",
+   "Looking for photos…": "Fotók keresése…",
++  "Looking for printers…": "Nyomtatók keresése…",
+   "Looking up lens profiles": "Objektívprofilok keresése",
+   "Looking up places": "Helyek keresése",
+   "Lossless": "Veszteségmentes",
+@@ -1515,6 +1517,7 @@
+   "Override colour": "Felülíró szín",
+   "Overwrite": "Felülírás",
+   "Own duration (off: the slide duration)": "Saját időtartam (ki: a dia időtartama)",
++  "PDF file": "PDF-fájl",
+   "Page": "Oldal",
+   "Page Options": "Oldal beállításai",
+   "Pages": "Oldalak",
+@@ -1622,9 +1625,14 @@
+   "Previous settings": "Előző beállítások",
+   "Primaries (x, y)": "Alapszínek (x, y)",
+   "Print": "Nyomtatás",
++  "Print One Sided": "Egyoldalas nyomtatás",
+   "Print Settings": "Nyomtatási beállítások",
+   "Print Templates": "Nyomtatási sablonok",
++  "Print in grayscale": "Szürkeárnyalatos nyomtatás",
++  "Print on Both Sides (flip on long edge)": "Kétoldalas nyomtatás (hosszú él mentén)",
++  "Print on Both Sides (flip on short edge)": "Kétoldalas nyomtatás (rövid él mentén)",
+   "Print to PDF": "Nyomtatás PDF-be",
++  "Print to:": "Nyomtatás ide:",
+   "Print…": "Nyomtatás…",
+   "Processor": "Processzor",
+   "Profile": "Profil",
+@@ -1737,6 +1745,7 @@
+   "Refresh Source": "Forrás frissítése",
+   "Refresh Source (/)": "Forrás frissítése (/)",
+   "Refresh View": "Nézet frissítése",
++  "Refresh the printer list": "Nyomtatólista frissítése",
+   "Reject": "Elutasítás",
+   "Reject below focus": "Elutasítás élesség alatt",
+   "Rejected": "Elutasítva",
+@@ -1946,6 +1955,7 @@
+   "Selection": "Kijelölés",
+   "Selenium Tone": "Szelén tónus",
+   "Send Feedback…": "Visszajelzés küldése…",
++  "Sent to the printer": "Elküldve a nyomtatóra",
+   "Separate several keywords with commas. Return gives them to the selected photos.": "Több kulcsszót vesszővel válassz el. A Return a kijelölt fotókhoz adja őket.",
+   "Separated by commas": "Vesszővel elválasztva",
+   "Sepia Tone": "Szépia tónus",
+diff --git a/crates/ui-egui/locales/ro.json b/crates/ui-egui/locales/ro.json
+index 1a085ec..42e621b 100644
+--- a/crates/ui-egui/locales/ro.json
++++ b/crates/ui-egui/locales/ro.json
+@@ -437,6 +437,7 @@
+   "Convert to DNG": "Conversie în DNG",
+   "Cool Fade": "Estompare rece",
+   "Cool Morning": "Dimineață răcoroasă",
++  "Copies:": "Copii:",
+   "Copy": "Copiere",
+   "Copy After's Settings to Before": "Copiere setări după în înainte",
+   "Copy Before to After": "Copiere înainte în după",
+@@ -1197,6 +1198,7 @@
+   "Long Edge": "Latura lungă",
+   "Looking for changes": "Se caută modificări",
+   "Looking for photos…": "Se caută fotografii…",
++  "Looking for printers…": "Se caută imprimante…",
+   "Looking up lens profiles": "Se caută profiluri de obiectiv",
+   "Looking up places": "Se caută locuri",
+   "Lossless": "Fără pierderi",
+@@ -1515,6 +1517,7 @@
+   "Override colour": "Culoare de înlocuire",
+   "Overwrite": "Suprascriere",
+   "Own duration (off: the slide duration)": "Durată proprie (dezactivat: durata diapozitivului)",
++  "PDF file": "Fișier PDF",
+   "Page": "Pagină",
+   "Page Options": "Opțiuni pagină",
+   "Pages": "Pagini",
+@@ -1622,9 +1625,14 @@
+   "Previous settings": "Setări anterioare",
+   "Primaries (x, y)": "Primare (x, y)",
+   "Print": "Imprimare",
++  "Print One Sided": "Imprimare pe o singură față",
+   "Print Settings": "Setări de imprimare",
+   "Print Templates": "Șabloane de imprimare",
++  "Print in grayscale": "Imprimare în tonuri de gri",
++  "Print on Both Sides (flip on long edge)": "Imprimare față-verso (întoarcere pe latura lungă)",
++  "Print on Both Sides (flip on short edge)": "Imprimare față-verso (întoarcere pe latura scurtă)",
+   "Print to PDF": "Imprimare în PDF",
++  "Print to:": "Imprimare în:",
+   "Print…": "Imprimare…",
+   "Processor": "Procesor",
+   "Profile": "Profil",
+@@ -1737,6 +1745,7 @@
+   "Refresh Source": "Reîmprospătare sursă",
+   "Refresh Source (/)": "Reîmprospătare sursă (/)",
+   "Refresh View": "Reîmprospătare vizualizare",
++  "Refresh the printer list": "Reîmprospătare listă imprimante",
+   "Reject": "Respingere",
+   "Reject below focus": "Respingere sub focalizare",
+   "Rejected": "Respins",
+@@ -1946,6 +1955,7 @@
+   "Selection": "Selecție",
+   "Selenium Tone": "Ton seleniu",
+   "Send Feedback…": "Trimitere feedback…",
++  "Sent to the printer": "Trimis la imprimantă",
+   "Separate several keywords with commas. Return gives them to the selected photos.": "Separați mai multe cuvinte cheie cu virgule. Return le atribuie fotografiilor selectate.",
+   "Separated by commas": "Separate prin virgule",
+   "Sepia Tone": "Ton sepia",
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index b9bb092..892bed1 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -41,6 +41,7 @@ pub mod keymap;
+ pub mod lightroom_destination;
+ pub mod merge;
+ pub mod print_view;
++pub mod direct_print;
+ pub mod rules_editor;
+ pub mod settings;
+ pub mod slideshow_export;
+@@ -572,6 +573,7 @@ fn fixed_ok_label(app: &LightcraftApp, dlg: &Dialog, informational: bool) -> &'s
+         Dialog::LightroomResult { first: Some(_), .. } => "Show in Library",
+         Dialog::ContactSheet { .. } => "Choose PDF…",
+         Dialog::SlideshowExport { .. } => "Export…",
++        Dialog::Print if crate::dialogs::direct_print::to_printer() => "Print",
+         Dialog::Print => "Print to PDF…",
+         Dialog::Merge { .. } => "Merge",
+         Dialog::DenoiseModel { info, .. } if !informational && info["download"].is_string() => "Accept & Download",
+diff --git a/crates/ui-egui/src/dialogs/confirm.rs b/crates/ui-egui/src/dialogs/confirm.rs
+index b0d816d..279949b 100644
+--- a/crates/ui-egui/src/dialogs/confirm.rs
++++ b/crates/ui-egui/src/dialogs/confirm.rs
+@@ -207,6 +207,10 @@ pub fn confirm_dialog(app: &mut LightcraftApp, dlg: &Dialog) -> Result<serde_jso
+         ),
+         Dialog::ContactSheet { options } => app.run("app.contactSheet", json!(options)),
+         Dialog::SlideshowExport { settings } => app.run("app.slideshowExport", json!(settings)),
++        // CraftOffice: to a printer the pages go through a temporary PDF.
++        Dialog::Print if crate::dialogs::direct_print::to_printer() => {
++            app.run("app.print", json!({"path": crate::dialogs::direct_print::spool_path(), "toPrinter": true}))
++        }
+         Dialog::Print => app.run("app.print", json!({})),
+         Dialog::CopySettings { groups } => app.run("develop.copy", json!({"groups": groups})),
+         Dialog::PasteSettings { groups } => app.run("develop.paste", json!({"groups": groups})),
+diff --git a/crates/ui-egui/src/dialogs/direct_print.rs b/crates/ui-egui/src/dialogs/direct_print.rs
+new file mode 100644
+index 0000000..d3706ee
+--- /dev/null
++++ b/crates/ui-egui/src/dialogs/direct_print.rs
+@@ -0,0 +1,159 @@
++//! CraftOffice: File › Print… straight to a system printer (Lightroom's Print Job › Print to:
++//! Printer), next to the existing PDF file route. The pages are the same PDF the export task
++//! already writes; the host's spooler service sends them to the printer on the print thread.
++//!
++//! The choice lives on the UI thread only, so it stays out of the print settings (which are
++//! saved in templates) and survives closing and reopening the dialog.
++
++use std::cell::RefCell;
++use std::sync::mpsc::{Receiver, TryRecvError};
++use std::time::Duration;
++
++use egui::Ui;
++
++use crate::LightcraftApp;
++use crate::services::{PrintJob, PrinterInfo};
++
++const SIDES: [(u8, &str); 3] = [
++    (0, "Print One Sided"),
++    (1, "Print on Both Sides (flip on long edge)"),
++    (2, "Print on Both Sides (flip on short edge)"),
++];
++
++struct State {
++    printers: Vec<PrinterInfo>,
++    loading: Option<Receiver<Vec<PrinterInfo>>>,
++    asked: bool,
++    /// `None`: print to a PDF file (the original route).
++    printer: Option<String>,
++    copies: u32,
++    sides: u8,
++    grayscale: bool,
++}
++
++impl Default for State {
++    fn default() -> Self {
++        State { printers: Vec::new(), loading: None, asked: false, printer: None, copies: 1, sides: 0, grayscale: false }
++    }
++}
++
++thread_local! {
++    static STATE: RefCell<State> = RefCell::new(State::default());
++}
++
++fn discover(app: &LightcraftApp, s: &mut State) {
++    s.asked = true;
++    let Some(list) = app.services.printers.clone() else { return };
++    let (tx, rx) = std::sync::mpsc::channel();
++    let spawned = std::thread::Builder::new().name("print-discovery".into()).spawn(move || {
++        let _ = tx.send(list());
++    });
++    if spawned.is_ok() {
++        s.loading = Some(rx);
++    }
++}
++
++/// The "Print to" section at the top of the Print dialog's settings.
++pub fn section(app: &LightcraftApp, ui: &mut Ui) {
++    if app.services.print_pdf.is_none() {
++        return;
++    }
++    STATE.with_borrow_mut(|s| {
++        if !s.asked {
++            discover(app, s);
++        }
++        if let Some(rx) = &s.loading {
++            match rx.try_recv() {
++                Ok(list) => {
++                    s.printers = list;
++                    s.loading = None;
++                }
++                Err(TryRecvError::Empty) => ui.ctx().request_repaint_after(Duration::from_millis(200)),
++                Err(TryRecvError::Disconnected) => s.loading = None,
++            }
++        }
++        let label = |p: &PrinterInfo| if p.label.is_empty() { p.name.clone() } else { p.label.clone() };
++        let pdf = crate::i18n::tr("PDF file").to_string();
++        let selected = match &s.printer {
++            None => pdf.clone(),
++            Some(name) => s.printers.iter().find(|p| &p.name == name).map_or_else(|| name.clone(), label),
++        };
++        ui.horizontal(|ui| {
++            ui.label(crate::i18n::tr("Print to:"));
++            egui::ComboBox::from_id_salt("craftoffice_print_to").width(190.0).selected_text(selected).show_ui(ui, |ui| {
++                if ui.selectable_label(s.printer.is_none(), pdf.as_str()).clicked() {
++                    s.printer = None;
++                }
++                if s.loading.is_some() && s.printers.is_empty() {
++                    ui.label(crate::i18n::tr("Looking for printers…"));
++                }
++                for p in &s.printers {
++                    let text = if p.default { format!("{} ({})", label(p), crate::i18n::tr("default")) } else { label(p) };
++                    if ui.selectable_label(s.printer.as_ref() == Some(&p.name), text).clicked() {
++                        s.printer = Some(p.name.clone());
++                    }
++                }
++            });
++            if ui.small_button("⟳").on_hover_text(crate::i18n::tr("Refresh the printer list")).clicked() {
++                discover(app, s);
++            }
++        });
++        if s.printer.is_some() {
++            ui.horizontal(|ui| {
++                ui.label(crate::i18n::tr("Copies:"));
++                ui.add(egui::DragValue::new(&mut s.copies).range(1..=999).speed(0.2));
++            });
++            let sides = SIDES.iter().find(|x| x.0 == s.sides).map_or(SIDES[0].1, |x| x.1);
++            egui::ComboBox::from_id_salt("craftoffice_print_sides").width(250.0).selected_text(crate::i18n::tr(sides)).show_ui(ui, |ui| {
++                for (id, text) in SIDES {
++                    if ui.selectable_label(s.sides == id, crate::i18n::tr(text)).clicked() {
++                        s.sides = id;
++                    }
++                }
++            });
++            ui.checkbox(&mut s.grayscale, crate::i18n::tr("Print in grayscale"));
++        }
++    });
++}
++
++/// A printer is chosen: the dialog's button prints instead of saving a PDF.
++pub fn to_printer() -> bool {
++    STATE.with_borrow(|s| s.printer.is_some())
++}
++
++/// The job for the chosen printer, titled `title`.
++pub fn job(title: &str) -> Option<PrintJob> {
++    STATE.with_borrow(|s| {
++        s.printer.clone().map(|printer| PrintJob { printer, copies: s.copies.clamp(1, 999), duplex: s.sides, grayscale: s.grayscale, title: title.to_string() })
++    })
++}
++
++/// Where the pages go on their way to the printer: a file in the temporary folder.
++pub fn spool_path() -> String {
++    let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
++    std::env::temp_dir().join(format!("craftoffice-print-{}-{n}.pdf", std::process::id())).to_string_lossy().into_owned()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn the_pdf_route_is_the_default() {
++        assert!(!to_printer());
++        assert!(job("x").is_none());
++        assert!(spool_path().ends_with(".pdf"));
++    }
++
++    #[test]
++    fn a_chosen_printer_makes_a_job() {
++        STATE.with_borrow_mut(|s| {
++            s.printer = Some("P".into());
++            s.copies = 0;
++            s.sides = 2;
++        });
++        let j = job("Print").unwrap();
++        assert_eq!((j.printer.as_str(), j.copies, j.duplex, j.title.as_str()), ("P", 1, 2, "Print"));
++        STATE.with_borrow_mut(|s| *s = State::default());
++    }
++}
+diff --git a/crates/ui-egui/src/dialogs/print_view.rs b/crates/ui-egui/src/dialogs/print_view.rs
+index fda115e..5abfb51 100644
+--- a/crates/ui-egui/src/dialogs/print_view.rs
++++ b/crates/ui-egui/src/dialogs/print_view.rs
+@@ -319,6 +319,9 @@ fn settings(app: &mut LightcraftApp, ui: &mut Ui, t: &Tokens, pu: &mut PrintUi,
+     ui.spacing_mut().item_spacing.y = 5.0;
+     ui.label(egui::RichText::new(crate::i18n::tr_format!("{n} photo{}", if photos == 1 { "" } else { "s" }, n = photos)).color(t.text_dim));
+ 
++    // CraftOffice: Print to a PDF file or straight to a printer.
++    super::direct_print::section(app, ui);
++
+     templates_section(app, ui, t, pu);
+ 
+     heading(ui, t, "Layout Style");
+diff --git a/crates/ui-egui/src/export_task.rs b/crates/ui-egui/src/export_task.rs
+index 2061611..bc37139 100644
+--- a/crates/ui-egui/src/export_task.rs
++++ b/crates/ui-egui/src/export_task.rs
+@@ -147,6 +147,14 @@ pub fn start_print(app: &mut LightcraftApp, params: &Value) -> Result<Value, Str
+     let prepared = compose::prepare(&mut app.session, &settings, &ids)?;
+     let total = prepared.len();
+     let title = std::path::Path::new(&path).file_stem().and_then(|n| n.to_str()).unwrap_or("Print").to_string();
++    // CraftOffice: `toPrinter` sends the pages to the printer chosen in the Print dialog.
++    let printer = if params.get("toPrinter").and_then(Value::as_bool) == Some(true) {
++        let job = crate::dialogs::direct_print::job("CraftOffice Darkroom").ok_or("Choose a printer first.")?;
++        let submit = app.services.print_pdf.clone().ok_or("Printing to a printer isn't available here.")?;
++        Some((job, submit))
++    } else {
++        None
++    };
+     let write = app.services.write_shared.clone();
+     let progress = Arc::new(Mutex::new((0, String::new())));
+     let cancel = Arc::new(AtomicBool::new(false));
+@@ -166,6 +174,10 @@ pub fn start_print(app: &mut LightcraftApp, params: &Value) -> Result<Value, Str
+                     return Err("Print cancelled".into());
+                 }
+                 let bytes = output::write(&pages, &settings.job, &title)?;
++                if let Some((job, submit)) = &printer {
++                    submit(&bytes, job)?;
++                    return Ok(vec![json!({"pages": pages.len(), "photos": photos, "bytes": bytes.len(), "print": true, "printer": job.printer})]);
++                }
+                 guard.check(std::path::Path::new(&path))?;
+                 match write {
+                     Some(write) => write(&path, &bytes)?,
+@@ -243,7 +255,11 @@ fn export_summary(files: &[Value], photos: Option<&Value>, total: usize, cancell
+         m = format!("Exported contact sheet: {} photos, {} pages", sheet["photos"], sheet["pages"]);
+     }
+     if let Some(pdf) = files.first().filter(|f| f["print"] == true) {
+-        m = format!("Printed to PDF: {} photos, {} pages", pdf["photos"], pdf["pages"]);
++        m = match pdf["printer"].as_str() {
++            // CraftOffice: sent to a printer
++            Some(printer) => format!("{} {printer}: {} photos, {} pages", crate::i18n::tr("Sent to the printer"), pdf["photos"], pdf["pages"]),
++            None => format!("Printed to PDF: {} photos, {} pages", pdf["photos"], pdf["pages"]),
++        };
+     }
+     if skipped > 0 {
+         m += &crate::i18n::tr_format!(" · {skipped} skipped (file exists)", skipped = skipped);
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index c40d16b..1c6efc1 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -102,7 +102,7 @@ pub use clock::{monotonic_ms, now_ms};
+ #[cfg(target_os = "linux")]
+ pub use services::OpenModelFolderFn;
+ pub use services::{
+-    CheckEditorFn, HostAction, OpenAllWithFn, OpenUrlFn, OpenWithFn, PickFiles, PickFolder, PngEncode, RevealFn, SaveFile, ScreenProfileFn, Services,
++    CheckEditorFn, HostAction, OpenAllWithFn, PrintJob, PrintPdfFn, PrinterInfo, PrintersFn, OpenUrlFn, OpenWithFn, PickFiles, PickFolder, PngEncode, RevealFn, SaveFile, ScreenProfileFn, Services,
+     SharedWrite, SystemThemeFn, WriteFn,
+ };
+ use state::{GestureFrame, InjectedPress};
+diff --git a/crates/ui-egui/src/services.rs b/crates/ui-egui/src/services.rs
+index 695a9d7..210d3f0 100644
+--- a/crates/ui-egui/src/services.rs
++++ b/crates/ui-egui/src/services.rs
+@@ -48,9 +48,37 @@ pub type HostAction = Box<dyn FnMut(&mut Session) -> Result<Value, String>>;
+ /// last heard and wakes the UI itself when that changes; it is never polled for changes.
+ pub type SystemThemeFn = Box<dyn Fn(&egui::Context) -> Option<egui::Theme>>;
+ 
++/// CraftOffice: a printer the system spooler offers for direct printing.
++#[derive(Clone, Debug, PartialEq)]
++pub struct PrinterInfo {
++    pub name: String,
++    pub label: String,
++    pub default: bool,
++}
++
++/// CraftOffice: one direct print job. `duplex`: 0 one-sided, 1 long edge, 2 short edge.
++#[derive(Clone, Debug, PartialEq)]
++pub struct PrintJob {
++    pub printer: String,
++    pub copies: u32,
++    pub duplex: u8,
++    pub grayscale: bool,
++    pub title: String,
++}
++
++/// Lists the system printers (slow: call it off the UI thread).
++pub type PrintersFn = std::sync::Arc<dyn Fn() -> Vec<PrinterInfo> + Send + Sync>;
++
++/// Hands a PDF to the spooler (slow: called on the print worker thread).
++pub type PrintPdfFn = std::sync::Arc<dyn Fn(&[u8], &PrintJob) -> Result<(), String> + Send + Sync>;
++
+ /// Platform services injected by the host app (desktop or web).
+ #[derive(Default)]
+ pub struct Services {
++    /// CraftOffice: printer discovery for File › Print; absent on the web.
++    pub printers: Option<PrintersFn>,
++    /// CraftOffice: direct printing; absent on the web (Print then makes a PDF).
++    pub print_pdf: Option<PrintPdfFn>,
+     /// Local's built-in places as (label, path). None uses the host's home folder.
+     pub local_places: Option<Vec<(String, String)>>,
+     /// Native file dialogs for commands, shown off the UI thread and answered later
