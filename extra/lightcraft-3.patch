@@ -1,0 +1,14 @@
+diff --git a/apps/lightcraft-web/src/web.rs b/apps/lightcraft-web/src/web.rs
+index 7977391..dcd4f9e 100644
+--- a/apps/lightcraft-web/src/web.rs
++++ b/apps/lightcraft-web/src/web.rs
+@@ -245,6 +245,9 @@ fn services(
+         None => Box::new(download),
+     };
+     Services {
++        // CraftOffice: no system printers in the browser (Print makes a PDF).
++        printers: None,
++        print_pdf: None,
+         local_places: None,
+         picker: None,
+         pick_display_profile: None,
