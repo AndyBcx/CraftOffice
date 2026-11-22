@@ -1,0 +1,188 @@
+//! The interface languages: English, Hungarian, Romanian. The launcher passes `CRAFTOFFICE_LANG`;
+//! otherwise the system (or browser) language decides, and View › Language changes it.
+
+use std::sync::atomic::{AtomicU8, Ordering};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lang {
+    En = 0,
+    Hu = 1,
+    Ro = 2,
+}
+
+static LANG: AtomicU8 = AtomicU8::new(0);
+
+pub fn set(lang: Lang) {
+    LANG.store(lang as u8, Ordering::Relaxed);
+}
+
+pub fn current() -> Lang {
+    match LANG.load(Ordering::Relaxed) {
+        1 => Lang::Hu,
+        2 => Lang::Ro,
+        _ => Lang::En,
+    }
+}
+
+/// The language for a locale tag such as `hu-HU` or `ro`.
+pub fn from_tag(tag: &str) -> Lang {
+    let t = tag.trim().to_ascii_lowercase();
+    if t.starts_with("hu") {
+        Lang::Hu
+    } else if t.starts_with("ro") {
+        Lang::Ro
+    } else {
+        Lang::En
+    }
+}
+
+/// The starting language: `CRAFTOFFICE_LANG`, then the system's.
+pub fn detect() -> Lang {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if let Ok(l) = std::env::var("CRAFTOFFICE_LANG") {
+            return from_tag(&l);
+        }
+        sys_locale::get_locale().map_or(Lang::En, |l| from_tag(&l))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::window().and_then(|w| w.navigator().language()).map_or(Lang::En, |l| from_tag(&l))
+    }
+}
+
+/// `s` in the interface language (English when there is no translation).
+pub fn t(s: &'static str) -> &'static str {
+    let lang = current();
+    if lang == Lang::En {
+        return s;
+    }
+    for (en, hu, ro) in TABLE {
+        if *en == s {
+            return if lang == Lang::Hu { hu } else { ro };
+        }
+    }
+    s
+}
+
+/// English, Hungarian, Romanian.
+const TABLE: &[(&str, &str, &str)] = &[
+    // menus
+    ("File", "Fájl", "Fișier"),
+    ("Edit", "Szerkesztés", "Editare"),
+    ("Image", "Kép", "Imagine"),
+    ("Layer", "Réteg", "Strat"),
+    ("View", "Nézet", "Vizualizare"),
+    ("Help", "Súgó", "Ajutor"),
+    ("New…", "Új…", "Nou…"),
+    ("Open…", "Megnyitás…", "Deschidere…"),
+    ("Save", "Mentés", "Salvare"),
+    ("Save As…", "Mentés másként…", "Salvare ca…"),
+    ("Import as Layer…", "Importálás rétegként…", "Importare ca strat…"),
+    ("Export PNG…", "Exportálás PNG-be…", "Exportare PNG…"),
+    ("Export JPEG…", "Exportálás JPEG-be…", "Exportare JPEG…"),
+    ("Quit", "Kilépés", "Ieșire"),
+    ("Undo", "Visszavonás", "Anulare"),
+    ("Redo", "Mégis", "Refacere"),
+    ("Clear Layer", "Réteg törlése", "Golire strat"),
+    ("Fill Layer with Colour", "Réteg kitöltése színnel", "Umplere strat cu culoare"),
+    ("Flip Horizontal", "Vízszintes tükrözés", "Oglindire orizontală"),
+    ("Flip Vertical", "Függőleges tükrözés", "Oglindire verticală"),
+    ("Rotate 90° Clockwise", "Forgatás 90°-kal jobbra", "Rotire 90° în sens orar"),
+    ("Rotate 90° Counter-clockwise", "Forgatás 90°-kal balra", "Rotire 90° în sens antiorar"),
+    ("Canvas Size…", "Vászonméret…", "Dimensiune pânză…"),
+    ("New Layer", "Új réteg", "Strat nou"),
+    ("Duplicate Layer", "Réteg kettőzése", "Duplicare strat"),
+    ("Delete Layer", "Réteg törlése a listából", "Ștergere strat"),
+    ("Merge Down", "Egyesítés az alatta lévővel", "Îmbinare în jos"),
+    ("Move Up", "Feljebb", "Mutare în sus"),
+    ("Move Down", "Lejjebb", "Mutare în jos"),
+    ("Flatten Image", "Kép összevonása", "Aplatizare imagine"),
+    ("Zoom In", "Nagyítás", "Mărire"),
+    ("Zoom Out", "Kicsinyítés", "Micșorare"),
+    ("Fit to Window", "Ablakhoz igazítás", "Potrivire în fereastră"),
+    ("Actual Size", "Valódi méret", "Dimensiune reală"),
+    ("Panels", "Panelek", "Panouri"),
+    ("Language", "Nyelv", "Limbă"),
+    ("About CraftOffice Sketch", "A CraftOffice Sketch névjegye", "Despre CraftOffice Sketch"),
+    ("Keyboard Shortcuts", "Billentyűparancsok", "Comenzi rapide"),
+    // tools
+    ("Pencil", "Ceruza", "Creion"),
+    ("Pen", "Toll", "Stilou"),
+    ("Brush", "Ecset", "Pensulă"),
+    ("Marker", "Filctoll", "Marker"),
+    ("Airbrush", "Festékszóró", "Aerograf"),
+    ("Eraser", "Radír", "Radieră"),
+    ("Fill", "Kitöltés", "Umplere"),
+    ("Eyedropper", "Pipetta", "Pipetă"),
+    ("Line", "Vonal", "Linie"),
+    ("Rectangle", "Téglalap", "Dreptunghi"),
+    ("Ellipse", "Ellipszis", "Elipsă"),
+    ("Hand", "Kéz (mozgatás)", "Mână (deplasare)"),
+    // panels
+    ("Colour", "Szín", "Culoare"),
+    ("Recent colours", "Legutóbbi színek", "Culori recente"),
+    ("Tool", "Eszköz", "Instrument"),
+    ("Size", "Méret", "Dimensiune"),
+    ("Opacity", "Átlátszatlanság", "Opacitate"),
+    ("Hardness", "Keménység", "Duritate"),
+    ("Smoothing", "Simítás", "Netezire"),
+    ("Pressure changes size", "A nyomás a méretet változtatja", "Presiunea schimbă dimensiunea"),
+    ("Pressure changes opacity", "A nyomás az átlátszatlanságot változtatja", "Presiunea schimbă opacitatea"),
+    ("Tolerance", "Tűrés", "Toleranță"),
+    ("Filled shape", "Kitöltött alakzat", "Formă plină"),
+    ("Layers", "Rétegek", "Straturi"),
+    ("Background", "Háttér", "Fundal"),
+    ("Visible", "Látható", "Vizibil"),
+    ("Rename", "Átnevezés", "Redenumire"),
+    // dialogs
+    ("New Drawing", "Új rajz", "Desen nou"),
+    ("Width", "Szélesség", "Lățime"),
+    ("Height", "Magasság", "Înălțime"),
+    ("White background", "Fehér háttér", "Fundal alb"),
+    ("Transparent background", "Átlátszó háttér", "Fundal transparent"),
+    ("Create", "Létrehozás", "Creare"),
+    ("Cancel", "Mégse", "Anulare"),
+    ("Apply", "Alkalmaz", "Aplicare"),
+    ("Close", "Bezárás", "Închidere"),
+    ("pixels", "képpont", "pixeli"),
+    ("Unsaved changes", "Nem mentett változások", "Modificări nesalvate"),
+    ("Save the drawing before closing?", "Mentsük a rajzot bezárás előtt?", "Salvați desenul înainte de închidere?"),
+    ("Don't Save", "Nincs mentés", "Nu salva"),
+    ("Untitled", "Névtelen", "Fără titlu"),
+    ("Saved", "Mentve", "Salvat"),
+    ("Exported", "Exportálva", "Exportat"),
+    ("Could not open the file", "A fájl nem nyitható meg", "Fișierul nu poate fi deschis"),
+    ("Could not save the file", "A fájl nem menthető", "Fișierul nu poate fi salvat"),
+    ("Drawing and sketching with layers, brushes and shapes.", "Rajzolás és vázlatkészítés rétegekkel, ecsetekkel és alakzatokkal.", "Desen și schițe cu straturi, pensule și forme."),
+    ("CraftOffice edition by AndyBcx: Hungarian and Romanian interface.", "CraftOffice-kiadás – AndyBcx: magyar és román felület.", "Ediția CraftOffice de AndyBcx: interfață în maghiară și română."),
+    ("Version", "Verzió", "Versiune"),
+    ("Anchor", "Igazítás", "Ancorare"),
+    ("Drop to open", "Engedd el a megnyitáshoz", "Eliberați pentru a deschide"),
+    ("Layer", "Réteg", "Strat"),
+    ("Shortcuts", "Billentyűk", "Taste"),
+    ("Brush size", "Ecsetméret", "Dimensiune pensulă"),
+    ("Pan", "Mozgatás", "Deplasare"),
+    ("Zoom", "Nagyítás", "Zoom"),
+    ("Swap colours", "Színcsere", "Schimbare culori"),
+    ("Secondary colour", "Másodlagos szín", "Culoare secundară"),
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn languages_and_lookup() {
+        assert_eq!(from_tag("hu-HU"), Lang::Hu);
+        assert_eq!(from_tag("ro_RO"), Lang::Ro);
+        assert_eq!(from_tag("de"), Lang::En);
+        set(Lang::Hu);
+        assert_eq!(t("File"), "Fájl");
+        assert_eq!(t("not translated"), "not translated");
+        set(Lang::Ro);
+        assert_eq!(t("Eraser"), "Radieră");
+        set(Lang::En);
+        assert_eq!(t("Eraser"), "Eraser");
+    }
+}
