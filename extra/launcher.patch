@@ -1,0 +1,43 @@
+diff --git a/src/apps.rs b/src/apps.rs
+index 830ae6d..8bb99a6 100644
+--- a/src/apps.rs
++++ b/src/apps.rs
+@@ -305,6 +305,21 @@ pub const APPS: &[AppDef] = &[
+         repo: "storytold/texturecraft",
+         sample: false,
+     },
++    AppDef {
++        id: "sketch",
++        name: "Sketch",
++        origin: "saját (CraftOffice)",
++        office: "Paint / Krita / Procreate",
++        group: "Kreatív",
++        desc: "Rajzolás és vázlat: rétegek, ceruza, toll, ecset, filctoll, festékszóró, alakzatok, kitöltés",
++        new_label: "Új rajz",
++        letter: "Sk",
++        color: [0xE0, 0x5A, 0x8A],
++        exts: &["cosketch"],
++        core: true,
++        repo: "",
++        sample: false,
++    },
+ ];
+ 
+ /// A gépen talált, a katalógusban nem szereplő *craft appok (pl. egy új Craft alkalmazás).
+diff --git a/src/ui.rs b/src/ui.rs
+index b63fbd6..cc6408a 100644
+--- a/src/ui.rs
++++ b/src/ui.rs
+@@ -346,6 +346,12 @@ pub fn paint_glyph(painter: &egui::Painter, r: Rect, kind: &str, col: Color32, b
+             line(&[(15.5, 6.5), (20.5, 12.0), (15.5, 17.5)], s);
+             line(&[(13.8, 5.0), (10.2, 19.0)], s);
+         }
++        "sketch" => {
++            // ceruza egy hullámos vonal fölött
++            line(&[(3.5, 19.0), (6.5, 16.0), (9.5, 18.0), (12.5, 15.5), (15.0, 17.0)], thin);
++            closed(&[(8.0, 13.0), (17.0, 4.0), (20.0, 7.0), (11.0, 16.0), (7.0, 17.0)], s);
++            line(&[(15.0, 6.0), (18.0, 9.0)], thin);
++        }
+         "vormantis" => {
+             // izometrikus kocka
+             let top = vec![p(12.0, 3.5), p(19.5, 7.8), p(12.0, 12.0), p(4.5, 7.8)];

@@ -1,0 +1,323 @@
+diff --git a/locales/hu/pdfcraft.tsv b/locales/hu/pdfcraft.tsv
+index 1aaf0a8..37cab76 100644
+--- a/locales/hu/pdfcraft.tsv
++++ b/locales/hu/pdfcraft.tsv
+@@ -3678,3 +3678,115 @@ document scrollbar width	Wide	Széles
+ 	…or paste the raw text here; # headings, - bullets	…vagy illessze be ide a nyers szöveget; # címsorok, - felsorolások
+ 	− Page {p}	− {p}. oldal
+ 	−LOC	−LOC
++# CraftOffice (AndyBcx): missing hu rows
++	1 line	1 sor
++	A script edited here can be at most 256 KiB long; that change wasn't made.	Az itt szerkesztett szkript legfeljebb 256 KiB lehet; a módosítás nem történt meg.
++	Accept or reject the OCR review of the other document before running OCR here	Előbb fogadd el vagy utasítsd el a másik dokumentum OCR-ellenőrzését, mielőtt itt OCR-t futtatsz
++	Add Tools to Hotbar	Eszközök hozzáadása a gyorssávhoz
++	Background removal	Háttér eltávolítása
++	Black and white (binarize)	Fekete-fehér (binarizálás)
++	Built-in	Beépített
++	Cancel re-read	Újraolvasás megszakítása
++	Check for updates when PdfCraft starts	Frissítések keresése a PdfCraft indulásakor
++	Cleans up the scanned pictures in place: recognized text, comments and links on the pages stay as they are.	A beolvasott képeket helyben tisztítja: a felismert szöveg, a megjegyzések és a hivatkozások az oldalakon változatlanok maradnak.
++	Close menu	Menü bezárása
++	Columns and rows must each be 1 to 99.	Az oszlopok és sorok száma egyenként 1 és 99 között lehet.
++	Combine engines	Motorok kombinálása
++	Creep:	Kúszás:
++	Custom calculation script:	Egyéni számítási szkript:
++	Custom scale	Egyéni lépték
++	Despeckle	Pöttyök eltávolítása
++	Detecting paper…	Papír felismerése…
++	Detecting…	Felismerés…
++	Discard embedded search index	Beágyazott keresési index elvetése
++	Discard external cross-references	Külső kereszthivatkozások elvetése
++	Dock navigation rail on Left	Navigációs sáv dokkolása balra
++	Dock navigation rail on Right	Navigációs sáv dokkolása jobbra
++	Document: {name}	Dokumentum: {name}
++	Drag hotbar	Gyorssáv húzása
++	Duplicate "{name}" onto:	„{name}” kettőzése ide:
++	Edge shadow removal	Szélárnyék eltávolítása
++	Edit attachment description	Melléklet leírásának szerkesztése
++	Edit description	Leírás szerkesztése
++	Engine	Motor
++	Enhance	Javítás
++	Enhance Scanned File	Beolvasott fájl javítása
++	Enhance scanned file…	Beolvasott fájl javítása…
++	Enhancing scans… image {d} of {t}	Beolvasások javítása… {d}/{t}. kép
++	Evens out the paper so a grey or yellowed background turns white, and darkens faint strokes. 0 is off.	Kiegyenlíti a papírt, így a szürke vagy sárgult háttér fehér lesz, a halvány vonások pedig sötétebbek. 0 = ki.
++	Every line set in the style chosen for a level becomes a bookmark of that level, under a new first bookmark.	Minden sor, amely egy szinthez választott stílusban van, annak a szintnek a könyvjelzője lesz, egy új első könyvjelző alatt.
++	Extend the docked toolbar along the entire side. Choose a side above to enable.	A dokkolt eszköztár kiterjesztése a teljes oldalra. A bekapcsoláshoz fent válassz oldalt.
++	Float	Lebegő
++	Freehand-Highlight	Szabadkézi kiemelés
++	Full-side strip	Teljes oldalas sáv
++	General & Interface	Általános és felület
++	Hotbar settings	Gyorssáv beállításai
++	Hotbar settings / add tools	Gyorssáv beállításai / eszközök hozzáadása
++	Hotbar tools	Gyorssáv eszközei
++	Inherit Zoom	Nagyítás öröklése
++	Invert middle-button drag	Középső gombos húzás megfordítása
++	Its {standard} identification couldn't be kept, so the file no longer says it conforms to {standard}.	A(z) {standard} azonosítója nem maradhatott meg, így a fájl már nem jelzi, hogy megfelel a(z) {standard} szabványnak.
++	Its {standard} identification was written back on its own.	A(z) {standard} azonosítója magától visszaíródott.
++	JavaScript, e.g. getField("total").value	JavaScript, pl. getField("total").value
++	Layout & Sizing	Elrendezés és méretezés
++	Level {n}	{n}. szint
++	Lightens shadows along the edges of the scan, such as a book's gutter or a copier's dark border	Világosítja a beolvasás széleinél lévő árnyékokat, például a könyv gerincénél vagy a fénymásoló sötét szegélyénél
++	Moves each sheet's pages toward the fold by this much more than the sheet outside it, so the margins match once the booklet is folded and trimmed.	Minden ív oldalait ennyivel jobban tolja a hajtás felé, mint a külső ívét, így a margók egyeznek a füzet hajtása és vágása után.
++	Navigation rail side	Navigációs sáv oldala
++	New bookmarks from text styles	Új könyvjelzők szövegstílusokból
++	New bookmarks from text styles…	Új könyvjelzők szövegstílusokból…
++	No scanned pages were cleaned up.	Egyetlen beolvasott oldal sem lett megtisztítva.
++	Only web (http, https) and email addresses open, and PdfCraft asks first, as for other links.	Csak webes (http, https) és e-mail-címek nyílnak meg, és a PdfCraft előbb rákérdez, mint más hivatkozásoknál.
++	Open web and email addresses written in the page text	Az oldal szövegében szereplő webes és e-mail-címek megnyitása
++	Optimizing… reading page {d} of {t}	Optimalizálás… {d}/{t}. oldal olvasása
++	Optimizing… reading the pages	Optimalizálás… az oldalak olvasása
++	PDF/A and PDF/UA	PDF/A és PDF/UA
++	Page Properties	Oldal tulajdonságai
++	Page Setup…	Oldalbeállítás…
++	Page properties…	Oldal tulajdonságai…
++	Page setup dialog is not available on this system.	Az oldalbeállítás ablak ezen a rendszeren nem érhető el.
++	Panning or auto-scrolling with the middle (wheel) button moves the page the other way.	A középső (görgő) gombbal való mozgatás vagy automatikus görgetés az ellenkező irányba mozgatja az oldalt.
++	Paste bookmarks	Könyvjelzők beillesztése
++	PdfCraft's checks found no problems for {level}. This is not a validator result.	A PdfCraft ellenőrzése nem talált hibát a(z) {level} szinthez. Ez nem hitelesítő eredmény.
++	PdfCraft's checks now find no problems for {level}. This is not a validator result. Save to keep the changes.	A PdfCraft ellenőrzése most nem talál hibát a(z) {level} szinthez. Ez nem hitelesítő eredmény. A változások megtartásához mentsd a fájlt.
++	Re-reading the page…	Az oldal újraolvasása…
++	Re-reading the region…	A terület újraolvasása…
++	Reading the drawing for snapping…	A rajz beolvasása az illesztéshez…
++	Remove "{name}" from this list? The file itself is not deleted.	Eltávolítod a(z) „{name}” elemet a listáról? Maga a fájl nem törlődik.
++	Remove from hotbar	Eltávolítás a gyorssávról
++	Remove scan speckle	Beolvasási pöttyök eltávolítása
++	Remove this leaf tag from reading order and mark its direct content as an artifact	A címke eltávolítása az olvasási sorrendből, és közvetlen tartalmának megjelölése műtermékként
++	Removes isolated dark specks such as dust and scanner noise. The only filter black and white scans take.	Eltávolítja az elszigetelt sötét pöttyöket, például a port és a szkennerzajt. Fekete-fehér beolvasásokra csak ez a szűrő alkalmazható.
++	Reset side panels	Oldalpanelek visszaállítása
++	Search all tools…	Keresés az összes eszköz között…
++	Search settings…	Keresés a beállításokban…
++	Selects paper size and orientation from the printer driver. For paper tray, print quality or other driver defaults, use Properties…	A papírméretet és a tájolást a nyomtató-illesztőprogramból választja. A papírtálcához, a nyomtatási minőséghez és más alapértékekhez használd a Tulajdonságok… gombot.
++	Show or hide the Tools panel	Az Eszközök panel megjelenítése vagy elrejtése
++	Show or hide the side panel	Az oldalpanel megjelenítése vagy elrejtése
++	Show tab numbers	Tabulátorsorszámok megjelenítése
++	Stick to a side:	Rögzítés egy oldalhoz:
++	Straighten pages scanned sideways or upside down	Oldalra vagy fejjel lefelé beolvasott oldalak kiegyenesítése
++	Straighten skewed text lines	Ferde szövegsorok kiegyenesítése
++	Tab Order	Tabulátorsorrend
++	Tesseract	Tesseract
++	The creep moves the innermost sheet's pages too far for this many pages. Reduce Creep.	Ennyi oldalnál a kúszás túl messzire tolja a legbelső ív oldalait. Csökkentsd a kúszást.
++	The document changed. Reopen Document Properties to edit the current version.	A dokumentum megváltozott. Nyisd meg újra a Dokumentum tulajdonságai ablakot a jelenlegi változat szerkesztéséhez.
++	The document's XMP metadata held the redacted text and was removed.	A dokumentum XMP-metaadatai tartalmazták a kitakart szöveget, ezért eltávolításra kerültek.
++	The re-read was cancelled; the words are unchanged	Az újraolvasás megszakadt; a szavak változatlanok
++	This document has no text to make bookmarks from.	Ebben a dokumentumban nincs szöveg, amelyből könyvjelzők készülhetnének.
++	This document's script is asking	A dokumentum szkriptje kérdez
++	This request comes from the document, not PdfCraft. Only enter a password if you trust this document.	Ez a kérés a dokumentumtól jön, nem a PdfCrafttól. Csak akkor adj meg jelszót, ha megbízol a dokumentumban.
++	This script is too long to edit here ({kib} KiB); its start is shown. It is kept as it is.	Ez a szkript túl hosszú ahhoz, hogy itt szerkeszd ({kib} KiB); az eleje látható. Változatlanul megmarad.
++	Toolbar size	Eszköztár mérete
++	Unspecified	Nincs megadva
++	Use Column Order	Oszlopsorrend használata
++	Use Document Structure	Dokumentumszerkezet használata
++	Use Row Order	Sorsorrend használata
++	Vertical layout	Függőleges elrendezés
++	bold	félkövér
++	by	szerző:
++	italic	dőlt
++	{font}, {size} pt	{font}, {size} pt
++	{list} and {last}	{list} és {last}
++	{n} lines	{n} sor
++	{verb} as "{name}"	{verb} mint „{name}”
+diff --git a/locales/ro/pdfcraft.tsv b/locales/ro/pdfcraft.tsv
+index 85faf68..3722607 100644
+--- a/locales/ro/pdfcraft.tsv
++++ b/locales/ro/pdfcraft.tsv
+@@ -4045,3 +4045,198 @@ calendar weekday	We	Mi
+ 	− Page {p}	− Pagina {p}
+ 	−Bin	−Bin
+ 	−LOC	−LOC
++# CraftOffice (AndyBcx): missing ro rows
++	+ Dictionary	+ Dicționar
++	1 line	1 linie
++	; cancelled — {n} files were not run	; anulat — {n} fișiere nu au fost procesate
++	; {n} files already had text	; {n} fișiere aveau deja text
++	A 3×3 median filter against scan speckle	Filtru median 3×3 împotriva punctelor de scanare
++	A folder is asked for when a multiple-file run starts	Un dosar este cerut la pornirea procesării mai multor fișiere
++	A script edited here can be at most 256 KiB long; that change wasn't made.	Un script editat aici poate avea cel mult 256 KiB; modificarea nu a fost făcută.
++	AVG CONFIDENCE	ÎNCREDERE MEDIE
++	Accept	Acceptare
++	Accept entire page	Acceptare pagină întreagă
++	Accept or reject the OCR review of the other document before running OCR here	Acceptați sau respingeți revizuirea OCR a celuilalt document înainte de a rula OCR aici
++	Add Tools to Hotbar	Adăugare instrumente în bara rapidă
++	Add a second engine's reading when the first is unsure	Adăugare citire de la al doilea motor când primul este nesigur
++	Always read with both engines and merge the words	Citire mereu cu ambele motoare și îmbinarea cuvintelor
++	Auto-rotate	Rotire automată
++	Automatic	Automat
++	Background removal	Eliminare fundal
++	Binarize	Binarizare
++	Black and white (binarize)	Alb-negru (binarizare)
++	Both engines, combined as the Strategy says	Ambele motoare, combinate conform strategiei
++	Built-in	Încorporat
++	CONFIDENCE	ÎNCREDERE
++	Cancel re-read	Anulare recitire
++	Cancelled — {n} words were read on {m} of {t} pages; the rest were not read	Anulat — au fost citite {n} cuvinte pe {m} din {t} pagini; restul nu au fost citite
++	Check for updates when PdfCraft starts	Căutare actualizări la pornirea PdfCraft
++	Cleans up the scanned pictures in place: recognized text, comments and links on the pages stay as they are.	Curăță imaginile scanate pe loc: textul recunoscut, comentariile și linkurile de pe pagini rămân neschimbate.
++	Click a word to inspect it; drag a rectangle to re-read part of the page	Faceți clic pe un cuvânt pentru a-l inspecta; trageți un dreptunghi pentru a reciti o parte din pagină
++	Close menu	Închidere meniu
++	Columns and rows must each be 1 to 99.	Coloanele și rândurile trebuie să fie fiecare între 1 și 99.
++	Combine engines	Combinare motoare
++	Confidence weighted	Ponderat după încredere
++	Correct recognized text…	Corectare text recunoscut…
++	Corrected text (Enter commits)	Text corectat (Enter confirmă)
++	Couldn't download the text recognition models: {e}	Modelele de recunoaștere a textului nu au putut fi descărcate: {e}
++	Creep:	Decalaj:
++	Custom calculation script:	Script de calcul personalizat:
++	Custom scale	Scară personalizată
++	Denoise	Reducere zgomot
++	Deskew	Îndreptare
++	Despeckle	Eliminare puncte
++	Detecting paper…	Detectare hârtie…
++	Detecting…	Detectare…
++	Discard embedded search index	Eliminare index de căutare încorporat
++	Discard external cross-references	Eliminare referințe încrucișate externe
++	Dock navigation rail on Left	Andocare bară de navigare la stânga
++	Dock navigation rail on Right	Andocare bară de navigare la dreapta
++	Downloading the text recognition models…	Se descarcă modelele de recunoaștere a textului…
++	Drag hotbar	Tragere bară rapidă
++	Duplicate "{name}" onto:	Duplicare „{name}” pe:
++	ENGINE · STRATEGY	MOTOR · STRATEGIE
++	Edge shadow removal	Eliminare umbre de margine
++	Edit attachment description	Editare descriere atașament
++	Edit description	Editare descriere
++	Editable text	Text editabil
++	Engine	Motor
++	Enhance	Îmbunătățire
++	Enhance Scanned File	Îmbunătățire fișier scanat
++	Enhance scanned file…	Îmbunătățire fișier scanat…
++	Enhancing scans… image {d} of {t}	Îmbunătățire scanări… imaginea {d} din {t}
++	Evens out the paper so a grey or yellowed background turns white, and darkens faint strokes. 0 is off.	Uniformizează hârtia astfel încât fundalul gri sau îngălbenit devine alb, iar trăsăturile slabe se întunecă. 0 = oprit.
++	Every line set in the style chosen for a level becomes a bookmark of that level, under a new first bookmark.	Fiecare rând scris în stilul ales pentru un nivel devine un marcaj de acel nivel, sub un nou prim marcaj.
++	Export value	Valoare de export
++	Extend the docked toolbar along the entire side. Choose a side above to enable.	Extinde bara de instrumente andocată pe toată latura. Alegeți o latură mai sus pentru a activa.
++	F8: next word to review; Shift+F8 goes back	F8: următorul cuvânt de revizuit; Shift+F8 înapoi
++	Float	Flotant
++	Force OCR (override skip options)	Forțare OCR (ignoră opțiunile de omitere)
++	Freehand-Highlight	Evidențiere liberă
++	Full-side strip	Bandă pe toată latura
++	General & Interface	General și interfață
++	HIGH (>= 90%)	RIDICAT (>= 90%)
++	Hotbar settings	Setări bară rapidă
++	Hotbar settings / add tools	Setări bară rapidă / adăugare instrumente
++	Hotbar tools	Instrumentele barei rapide
++	In multiple files: a file with any text is its own skipped bucket, and nothing is written for it	La mai multe fișiere: un fișier cu text este omis separat și nu se scrie nimic pentru el
++	Inherit Zoom	Moștenire zoom
++	Invert middle-button drag	Inversare tragere cu butonul din mijloc
++	Its {standard} identification couldn't be kept, so the file no longer says it conforms to {standard}.	Identificarea {standard} nu a putut fi păstrată, deci fișierul nu mai declară conformitatea cu {standard}.
++	Its {standard} identification was written back on its own.	Identificarea {standard} a fost rescrisă automat.
++	JavaScript, e.g. getField("total").value	JavaScript, de ex. getField("total").value
++	LOW (< 70%)	SCĂZUT (< 70%)
++	LOW-CONFIDENCE WORDS	CUVINTE CU ÎNCREDERE SCĂZUTĂ
++	Layout & Sizing	Aspect și dimensionare
++	Level {n}	Nivelul {n}
++	Lightens shadows along the edges of the scan, such as a book's gutter or a copier's dark border	Luminează umbrele de la marginile scanării, cum ar fi cotorul unei cărți sau marginea întunecată a unui copiator
++	MEDIUM (70-89%)	MEDIU (70-89%)
++	Mark this page as reviewed (Ctrl+T)	Marcare pagină ca revizuită (Ctrl+T)
++	Moves each sheet's pages toward the fold by this much more than the sheet outside it, so the margins match once the booklet is folded and trimmed.	Mută paginile fiecărei coli spre pliu cu atât mai mult decât coala din exterior, astfel încât marginile se potrivesc după plierea și tăierea broșurii.
++	Navigation rail side	Latura barei de navigare
++	New bookmarks from text styles	Marcaje noi din stiluri de text
++	New bookmarks from text styles…	Marcaje noi din stiluri de text…
++	Next uncertain	Următorul nesigur
++	No scanned pages were cleaned up.	Nicio pagină scanată nu a fost curățată.
++	OCR complete — no text recognized on this page.	OCR finalizat — niciun text recunoscut pe această pagină.
++	Only web (http, https) and email addresses open, and PdfCraft asks first, as for other links.	Se deschid doar adrese web (http, https) și de e-mail, iar PdfCraft întreabă mai întâi, ca la alte linkuri.
++	Open web and email addresses written in the page text	Deschidere adrese web și e-mail scrise în textul paginii
++	Optimizing… reading page {d} of {t}	Optimizare… citire pagina {d} din {t}
++	Optimizing… reading the pages	Optimizare… citirea paginilor
++	PAGE	PAGINĂ
++	PDF/A and PDF/UA	PDF/A și PDF/UA
++	Page Properties	Proprietăți pagină
++	Page Setup…	Configurare pagină…
++	Page properties…	Proprietăți pagină…
++	Page setup dialog is not available on this system.	Fereastra de configurare a paginii nu este disponibilă pe acest sistem.
++	Page verified	Pagină verificată
++	Pages with renderable text are left alone and reported as skipped	Paginile cu text afișabil sunt lăsate neschimbate și raportate ca omise
++	Panning or auto-scrolling with the middle (wheel) button moves the page the other way.	Deplasarea sau derularea automată cu butonul din mijloc (rotița) mută pagina în sens invers.
++	Paste bookmarks	Lipire marcaje
++	PdfCraft's checks found no problems for {level}. This is not a validator result.	Verificările PdfCraft nu au găsit probleme pentru {level}. Acesta nu este un rezultat de validare.
++	PdfCraft's checks now find no problems for {level}. This is not a validator result. Save to keep the changes.	Verificările PdfCraft nu mai găsesc probleme pentru {level}. Acesta nu este un rezultat de validare. Salvați pentru a păstra modificările.
++	Previous uncertain	Anteriorul nesigur
++	Primary only	Doar principalul
++	ROVER vote	Vot ROVER
++	Re-OCR entire page	OCR din nou pentru toată pagina
++	Re-OCR this region	OCR din nou pentru această zonă
++	Re-reading the page…	Se recitește pagina…
++	Re-reading the region…	Se recitește zona…
++	Read {n} words on {m} of {t} pages	Au fost citite {n} cuvinte pe {m} din {t} pagini
++	Reading the drawing for snapping…	Se citește desenul pentru aliniere…
++	Reads pages and files even where the skip options would leave them alone	Citește pagini și fișiere chiar și acolo unde opțiunile de omitere le-ar lăsa neschimbate
++	Recognized text	Text recunoscut
++	Recognized text applied ({n} words, one undoable step)	Text recunoscut aplicat ({n} cuvinte, un singur pas anulabil)
++	Reject	Respingere
++	Reject entire page	Respingere pagină întreagă
++	Remove "{name}" from this list? The file itself is not deleted.	Eliminați „{name}” din această listă? Fișierul în sine nu este șters.
++	Remove from hotbar	Eliminare din bara rapidă
++	Remove scan speckle	Eliminare puncte de scanare
++	Removes isolated dark specks such as dust and scanner noise. The only filter black and white scans take.	Elimină punctele întunecate izolate, cum ar fi praful și zgomotul scanerului. Singurul filtru pentru scanările alb-negru.
++	Reset side panels	Resetare panouri laterale
++	Run OCR	Rulare OCR
++	Sauvola binarization: ink to black, paper to white	Binarizare Sauvola: cerneala devine neagră, hârtia albă
++	Search all tools…	Căutare în toate instrumentele…
++	Search settings…	Căutare în setări…
++	Select a word on the page to inspect it	Selectați un cuvânt de pe pagină pentru a-l inspecta
++	Selects paper size and orientation from the printer driver. For paper tray, print quality or other driver defaults, use Properties…	Selectează dimensiunea și orientarea hârtiei din driverul imprimantei. Pentru tavă, calitate de imprimare sau alte setări implicite, folosiți Proprietăți…
++	Several files have the same name, so their results would overwrite each other; nothing was written: {list}	Mai multe fișiere au același nume, deci rezultatele s-ar suprascrie; nu s-a scris nimic: {list}
++	Shift+F8: the previous word to review	Shift+F8: cuvântul anterior de revizuit
++	Show Page Edge Shadows	Afișare umbre la marginea paginii
++	Show or hide the Tools panel	Afișare sau ascundere panou Instrumente
++	Show or hide the side panel	Afișare sau ascundere panou lateral
++	Show tab numbers	Afișare numere de tabulare
++	Skip files that already have text	Omitere fișiere care au deja text
++	Skip pages that already have text	Omitere pagini care au deja text
++	Source page	Pagina sursă
++	Stick to a side:	Fixare la o latură:
++	Straighten pages scanned sideways or upside down	Îndreptare pagini scanate lateral sau cu susul în jos
++	Straighten skewed text lines	Îndreptare rânduri de text înclinate
++	Straightens skewed text lines before reading	Îndreaptă rândurile de text înclinate înainte de citire
++	Suggestions	Sugestii
++	Tab Order	Ordinea de tabulare
++	Tesseract	Tesseract
++	The built-in engine (pure Rust)	Motorul încorporat (Rust pur)
++	The creep moves the innermost sheet's pages too far for this many pages. Reduce Creep.	Decalajul mută prea mult paginile colii interioare pentru atâtea pagini. Reduceți decalajul.
++	The document changed. Reopen Document Properties to edit the current version.	Documentul s-a modificat. Redeschideți Proprietăți document pentru a edita versiunea curentă.
++	The document's XMP metadata held the redacted text and was removed.	Metadatele XMP ale documentului conțineau textul redactat și au fost eliminate.
++	The output folder already holds files of these names; nothing was written: {list}	Dosarul de ieșire conține deja fișiere cu aceste nume; nu s-a scris nimic: {list}
++	The page was read again; its words were replaced (undo in the panel)	Pagina a fost recitită; cuvintele au fost înlocuite (anulare din panou)
++	The page's words were applied as one undoable step ({n} words)	Cuvintele paginii au fost aplicate ca un singur pas anulabil ({n} cuvinte)
++	The re-read was cancelled; the words are unchanged	Recitirea a fost anulată; cuvintele sunt neschimbate
++	The region was read again; its words were replaced (undo in the panel)	Zona a fost recitită; cuvintele au fost înlocuite (anulare din panou)
++	The searchable copies are written here under the source names	Copiile căutabile sunt scrise aici cu numele surselor
++	The selected word is gone; choose another	Cuvântul selectat nu mai există; alegeți altul
++	The tesseract program, run as an external process	Programul tesseract, rulat ca proces extern
++	This document has no text to make bookmarks from.	Acest document nu are text din care să se creeze marcaje.
++	This document's script is asking	Scriptul acestui document întreabă
++	This request comes from the document, not PdfCraft. Only enter a password if you trust this document.	Această cerere vine de la document, nu de la PdfCraft. Introduceți o parolă doar dacă aveți încredere în document.
++	This script is too long to edit here ({kib} KiB); its start is shown. It is kept as it is.	Acest script este prea lung pentru a fi editat aici ({kib} KiB); este afișat începutul. Rămâne neschimbat.
++	Toolbar size	Dimensiune bară de instrumente
++	Turns pages scanned sideways or upside down upright before reading	Întoarce în poziție verticală paginile scanate lateral sau cu susul în jos înainte de citire
++	Undo the last review change (Ctrl+Z)	Anulare ultima modificare de revizuire (Ctrl+Z)
++	Unspecified	Nespecificat
++	Use Column Order	Folosire ordine pe coloane
++	Use Document Structure	Folosire structură document
++	Use Row Order	Folosire ordine pe rânduri
++	Use the chosen engine's reading alone	Folosire doar a citirii motorului ales
++	VERIFIED %	% VERIFICAT
++	Verified	Verificat
++	Vertical layout	Aspect vertical
++	Word	Cuvânt
++	Writes a new document of visible text; the scan is not changed	Scrie un document nou cu text vizibil; scanarea nu se modifică
++	Wrote {name}	S-a scris {name}
++	bold	aldin
++	by	de
++	corrected	corectat
++	italic	cursiv
++	removed	eliminat
++	skipped	omis
++	unreviewed	nerevizuit
++	verified	verificat
++	{font}, {size} pt	{font}, {size} pt
++	{list} and {last}	{list} și {last}
++	{name}: {n} low-confidence word(s) on pages {pages}	{name}: {n} cuvinte cu încredere scăzută pe paginile {pages}
++	{n} lines	{n} linii
++	{n} word(s) to review	{n} cuvinte de revizuit
++	{verb} as "{name}"	{verb} ca „{name}”
