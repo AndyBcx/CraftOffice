@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>CraftOffice Sketch</title>
+<link data-trunk rel="rust" data-bin="sketch" data-type="main" data-wasm-opt="z" />
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1b1b1b; touch-action: none; }
+  canvas { width: 100%; height: 100%; display: block; }
+  #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #ccc; font: 16px sans-serif; }
+</style>
+</head>
+<body>
+<canvas id="sketch_canvas"></canvas>
+<div id="loading">CraftOffice Sketch…</div>
+</body>
+</html>
