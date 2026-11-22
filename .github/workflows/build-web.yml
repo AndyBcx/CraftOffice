@@ -17,6 +17,8 @@ env:
   EGUI_REF: 6d518fc799681571963842f95b55a6b68431b15a
   I18N_REF: e56d26244bbac099bfd42e23fb12f78a4be418a7
   TRUNK_VERSION: v0.21.14
+  LO_DICT_REF: c0865a85eb67dc377f2cf8e8fe2c4fa9e53f0dcb
+  PROOF_REF: 01315d9c92b5b0e69082d35ca56099461a1efd45
   CARGO_TERM_COLOR: never
 
 jobs:
@@ -59,6 +61,8 @@ jobs:
           tar xzf bundle/patches.tar.gz; tar xzf bundle/egui036.tar.gz
           fetch craft-fonts craft-fonts "$CRAFT_FONTS_REF"
           fetch egui egui-hook "$EGUI_REF"; git -C egui-hook apply --whitespace=nowarn "$W/patches/egui.patch"
+          # the apps' CraftOffice names also where no translator is installed (the web builds)
+          python3 extra/egui_brand.py egui-hook/crates/egui/src/widget_text.rs egui-hook-036/src/widget_text.rs
           if [ -z "$I18" ]; then fetch craft-i18n craft-i18n "$I18N_REF"; git -C craft-i18n apply --whitespace=nowarn "$W/patches/craft-i18n.patch"
             if [ -f extra/craft-i18n.patch ]; then git -C craft-i18n apply --whitespace=nowarn "$W/extra/craft-i18n.patch"; fi
           else fetch craft-i18n craft-i18n "$I18"
@@ -72,6 +76,25 @@ jobs:
             if [ -f "$P" ]; then echo "extra: $P"; (cd appsrc && git apply --whitespace=nowarn "$W/$P"); fi
           done
           find appsrc -name Cargo.toml -not -path "*/target/*" -print0 | xargs -0 sed -i "s#/home/claude/#$W/#g"
+          if [ "$A" = wordcraft ]; then
+            # Writer in the browser: Hungarian and Romanian spelling built in (craft-proof with
+            # LibreOffice's dictionaries), and the common document fonts beside the page.
+            fetch craft-libs craft-libs-proof "$PROOF_REF"
+            git -C craft-libs-proof apply --whitespace=nowarn "$W/extra/craft-proof.patch"
+            Z=craft-libs-proof/crates/proof/src/craftoffice_dicts; mkdir -p "$Z"
+            for f in hu_HU/hu_HU.aff hu_HU/hu_HU.dic ro/ro_RO.aff ro/ro_RO.dic; do
+              curl -fsSL "https://raw.githubusercontent.com/LibreOffice/dictionaries/$LO_DICT_REF/$f" \
+                | python3 -c "import sys, zlib; sys.stdout.buffer.write(zlib.compress(sys.stdin.buffer.read(), 9))" > "$Z/$(basename "$f").z"
+            done
+            ls -la "$Z"
+            perl -pi -e 's#^wordcraft-proof = \{.*#wordcraft-proof = { package = "craft-proof", path = "'"$W"'/craft-libs-proof/crates/proof" }#' appsrc/Cargo.toml
+            grep -n "^wordcraft-proof" appsrc/Cargo.toml
+            for p in fonts-liberation fonts-liberation2 fonts-crosextra-carlito fonts-crosextra-caladea fonts-dejavu-core fonts-dejavu-extra \
+                     fonts-noto-core fonts-open-sans fonts-roboto-unhinted fonts-lato fonts-comic-neue fonts-ebgaramond fonts-linuxlibertine; do
+              sudo apt-get install -y --no-install-recommends "$p" >/dev/null || echo "no package $p"
+            done
+            python3 extra/web_fonts.py "$W/writer-fonts"
+          fi
           export CRAFT_I18N_DIR="$W/craft-i18n" CRAFT_FONTS_DIR="$W/craft-fonts"
           mkdir -p "out/$A"
           case "$A" in
@@ -87,6 +110,9 @@ jobs:
               D=appsrc/dist/web ;;
           esac
           cp -r "$D/." "out/$A/"
+          if [ "$A" = wordcraft ]; then cp -r "$W/writer-fonts" "out/$A/fonts"; fi
+          # the page's own text (tab title, "Loading…") with the CraftOffice names
+          python3 extra/web_names.py "out/$A"
           du -sh "out/$A"
       - uses: actions/upload-artifact@v4
         if: ${{ !inputs.only || inputs.only == matrix.app }}

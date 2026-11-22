@@ -12,6 +12,7 @@ on:
         default: ''
 
 env:
+  LO_DICT_REF: c0865a85eb67dc377f2cf8e8fe2c4fa9e53f0dcb
   CRAFT_FONTS_REF: b076417b5880bd4154bd22f00695b1d28c6bea83
   EGUI_REF: 6d518fc799681571963842f95b55a6b68431b15a
   I18N_REF: e56d26244bbac099bfd42e23fb12f78a4be418a7
@@ -101,8 +102,29 @@ jobs:
           name: linux-${{ matrix.app }}
           path: out/
 
+  dicts:
+    # The Hungarian and Romanian dictionaries (spelling, hyphenation, thesaurus) for the package's
+    # `szotarak` folder: the launcher hands them to Writer and the other apps. LibreOffice's, pinned.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dictionaries
+        shell: bash
+        run: |
+          set -e
+          B="https://raw.githubusercontent.com/LibreOffice/dictionaries/$LO_DICT_REF"
+          mkdir -p out/szotarak
+          for f in hu_HU/hu_HU.aff hu_HU/hu_HU.dic hu_HU/hyph_hu_HU.dic hu_HU/th_hu_HU_v2.dat \
+                   ro/ro_RO.aff ro/ro_RO.dic ro/hyph_ro_RO.dic ro/th_ro_RO_v2.dat; do
+            curl -fsSL -o "out/szotarak/$(basename "$f")" "$B/$f" || echo "missing: $f"
+          done
+          ls -la out/szotarak
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-dicts
+          path: out/
+
   package-linux:
-    needs: [linux]
+    needs: [linux, dicts]
     if: always()
     runs-on: ubuntu-latest
     steps:
