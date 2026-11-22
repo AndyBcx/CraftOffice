@@ -98,3 +98,139 @@ index 41d5f88..8da2673 100644
      }
  
      /// Write the current preferences out through the host's hook, if it has one (#2716). The
+diff --git a/crates/ui-egui/src/chrome.rs b/crates/ui-egui/src/chrome.rs
+index ebbcccb..17300d7 100644
+--- a/crates/ui-egui/src/chrome.rs
++++ b/crates/ui-egui/src/chrome.rs
+@@ -384,39 +384,52 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
+                     }
+                     qat_end = if rtl { ui.min_rect().min.x } else { ui.min_rect().max.x };
+                     ui.with_layout(crate::rtl::far_side(ui, egui::Align::Center), |ui| {
+-                        // Account / community.
+-                        let (r, resp) = ui.allocate_exact_size(vec2(control_h, control_h), Sense::click());
+-                        ui.painter().circle_filled(r.center(), control_h / 2.0 - 1.0, t.accent);
+-                        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tl!("Account")));
+-                        let initials: String = app.session.user_initials().chars().take(2).collect();
+-                        ui.painter().text(r.center(), Align2::CENTER_CENTER, initials, semibold(10.5), t.on_accent);
+-                        if resp.on_hover_text(format!("{} — set your name in File › Options", app.session.author)).clicked() {
+-                            let _ = app.run("ui.backstage", json!({"value": true, "page": "options", "pane": "general"}));
+-                        }
++                        // CraftOffice: like Sheets' title bar — search, Share, editing mode and comments
++                        // on the far side; no account badge or community button.
++                        search_box(app, ui, control_h);
+                         ui.add_space(8.0);
+-                        if app.ui.show_discord {
+-                            let (r, resp) = ui.allocate_exact_size(vec2(84.0, 22.0), Sense::click());
+-                            ui.painter().rect_filled(r, 11.0, if resp.hovered() { t.accent_text } else { t.accent });
++                        ui.add_enabled_ui(app.has_document(), |ui| {
++                            let share = tl!("Share");
++                            let share_w = ui.ctx().fonts_mut(|f| f.layout_no_wrap(share.to_string(), medium(12.0), t.text).size().x);
++                            let (r, resp) = ui.allocate_exact_size(vec2((share_w + 34.0).max(70.0), control_h), Sense::click());
++                            ui.painter().rect_filled(r, 4.0, if resp.hovered() { t.accent_text } else { t.accent });
+                             icons::paint(
+                                 ui.painter(),
+                                 Rect::from_center_size(pos2(crate::rtl::lead_x(rtl, r, 13.0), r.center().y), vec2(14.0, 14.0)),
+-                                "discord",
++                                "share",
+                                 t.on_accent,
+                                 t.on_accent,
+                             );
+                             ui.painter().text(
+-                                pos2(crate::rtl::lead_x(rtl, r, 24.0), r.center().y),
++                                pos2(crate::rtl::lead_x(rtl, r, 25.0), r.center().y),
+                                 crate::rtl::lead_center(rtl),
+-                                tl!("Discord"),
+-                                medium(11.5),
++                                share,
++                                medium(12.0),
+                                 t.on_accent,
+                             );
+-                            if resp.on_hover_text(tl!("Join the ArtCraft community on Discord")).clicked() {
+-                                let _ = app.run("ui.discord", json!({}));
++                            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, share));
++                            if resp.on_hover_text(tl!("Export a copy to share (PDF, Word document)")).clicked() {
++                                let _ = app.run("ui.backstage", json!({"value": true, "page": "export"}));
+                             }
+-                            ui.add_space(8.0);
+-                        }
+-                        search_box(app, ui, control_h);
++                            ui.add_space(6.0);
++                            let track = app.session.doc.settings.track_changes;
++                            let editing_label = if track { tl!("Reviewing") } else { tl!("Editing") };
++                            let mode = crate::widgets::icon_only_button(ui, "pencil", editing_label, regular(12.0), true);
++                            crate::rtl::menu(&mode).show(|ui| {
++                                if ui.selectable_label(!track, tl!("Editing — edit the document directly")).clicked() {
++                                    let _ = app.run("review.trackChanges", json!({"value": false}));
++                                    ui.close();
++                                }
++                                if ui.selectable_label(track, tl!("Reviewing — edits become suggestions")).clicked() {
++                                    let _ = app.run("review.trackChanges", json!({"value": true}));
++                                    ui.close();
++                                }
++                            });
++                            ui.add_space(4.0);
++                            if crate::widgets::icon_only_button(ui, "comment", tl!("Comments"), regular(12.0), false).clicked() {
++                                let _ = app.run("view.commentsPane", json!({}));
++                            }
++                        });
+                         right_start = if rtl { ui.min_rect().max.x } else { ui.min_rect().min.x };
+                     });
+                 })
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index f38edcd..82c2618 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -506,7 +506,7 @@ impl Default for UiState {
+             pane_places: Default::default(),
+             pane_order: Vec::new(),
+             nav_collapsed: Default::default(),
+-            show_discord: true,
++            show_discord: false,
+             author: None,
+             window: None,
+             language: i18n::AUTO.into(),
+diff --git a/crates/ui-egui/src/ribbon.rs b/crates/ui-egui/src/ribbon.rs
+index ebdcd26..acc6c24 100644
+--- a/crates/ui-egui/src/ribbon.rs
++++ b/crates/ui-egui/src/ribbon.rs
+@@ -176,7 +176,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
+                         // The gaps (6 + 4 + 8) and the strip's margin.
+                         spaced(share_button) + spaced(editing) + spaced(comment) + 18.0 + 12.0
+                     };
+-                    let button_levels = [button_widths(0), button_widths(1), button_widths(2)];
++                    // CraftOffice: Share, editing mode and Comments are in the title bar (like Sheets).
++                    let _ = button_widths;
++                    let button_levels = [0.0, 0.0, 0.0];
+                     let labels: Vec<&str> = tabs.iter().map(|(tab, custom)| if *custom { tab.as_str() } else { tl!(tab) }).collect();
+                     let specs: Vec<TabSpec> = tabs
+                         .iter()
+@@ -194,6 +196,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
+                         // these buttons. Disabling the whole line took the tab strip with it: the
+                         // tabs took clicks that did nothing, so the empty window had no way back to
+                         // the Start screen (#3045).
++                        if false {
+                         ui.add_enabled_ui(app.has_document(), |ui| {
+                             let (share_size, share_text) =
+                                 if plan.buttons < 2 { (((share_w + 36.0).max(74.0), 24.0), true) } else { ((30.0, 24.0), false) };
+@@ -248,7 +251,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
+                                 let _ = app.run("view.commentsPane", json!({}));
+                             }
+                         });
+-                        ui.add_space(8.0);
++                        }
+                         // The tabs fill the room left of the cluster, from the side reading starts from.
+                         // (By language: this row sits in the far-side cluster's layout, which fills from the other end.)
+                         let tabs_layout = if crate::rtl::on() {
+diff --git a/crates/ui-egui/src/windows.rs b/crates/ui-egui/src/windows.rs
+index 42ee06f..3f34fa9 100644
+--- a/crates/ui-egui/src/windows.rs
++++ b/crates/ui-egui/src/windows.rs
+@@ -41,7 +41,7 @@ pub(crate) mod arrange;
+ 
+ /// The window title for a document called `name`.
+ pub(crate) fn title(name: &str, dirty: bool) -> String {
+-    format!("{name}{} - WordCraft", if dirty { " •" } else { "" })
++    format!("{name}{} - CraftOffice Writer", if dirty { " •" } else { "" })
+ }
+ 
+ /// An open window.
