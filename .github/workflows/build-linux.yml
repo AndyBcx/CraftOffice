@@ -25,7 +25,7 @@ jobs:
       fail-fast: false
       max-parallel: 8
       matrix:
-        app: [craftoffice, wordcraft, gridcraft, pdfcraft, photocraft, deckcraft, designcraft, vectorcraft, lightcraft, filmcraft, effectcraft, soundcraft, anicraft, figcraft, cadcraft, materialcraft, texturecraft, craft-anything]
+        app: [craftoffice, sketch, wordcraft, gridcraft, pdfcraft, photocraft, deckcraft, designcraft, vectorcraft, lightcraft, filmcraft, effectcraft, soundcraft, anicraft, figcraft, cadcraft, materialcraft, texturecraft, craft-anything]
     steps:
       - uses: actions/checkout@v4
         if: ${{ !inputs.only || inputs.only == matrix.app }}
@@ -46,8 +46,19 @@ jobs:
           A="${{ matrix.app }}"
           mkdir -p out
           if [ "$A" = craftoffice ]; then
-            tar xzf bundle/launcher-src.tar.gz; cd craftoffice; cargo build --release
+            tar xzf bundle/launcher-src.tar.gz; cd craftoffice
+            if [ -f "$W/extra/launcher.patch" ]; then git apply --whitespace=nowarn "$W/extra/launcher.patch"; fi
+            cargo build --release
             cp target/release/craftoffice "$W/out/craftoffice"; exit 0
+          fi
+          if [ "$A" = sketch ]; then
+            # CraftOffice Sketch: its own source in this repository
+            cd sketch; cargo build --release
+            V=$(cargo pkgid | sed -E 's/.*[#@]([0-9][^#@]*)$/\1/')
+            N="CraftOffice Sketch"; mkdir -p "$W/out/apps/$N"
+            strip -o "$W/out/apps/$N/$N" target/release/sketch
+            printf '{"id":"sketch","version":"%s","exe":"%s"}' "$V" "$N" > "$W/out/apps/$N/craftoffice.json"
+            exit 0
           fi
           SRC=$(grep -E "^ *- \\{ app: $A," .github/workflows/build.yml | head -1 | sed -E 's/.*src: ([^ ,}]+).*/\1/')
           I18=$(grep -E "^ *- \\{ app: $A," .github/workflows/build.yml | head -1 | grep -oE "i18n: [0-9a-f]+" | cut -d' ' -f2 || true)
@@ -56,7 +67,9 @@ jobs:
           fetch egui egui-hook "$EGUI_REF"; git -C egui-hook apply --whitespace=nowarn "$W/patches/egui.patch"
           if [ -z "$I18" ]; then fetch craft-i18n craft-i18n "$I18N_REF"; git -C craft-i18n apply --whitespace=nowarn "$W/patches/craft-i18n.patch"
             if [ -f extra/craft-i18n.patch ]; then git -C craft-i18n apply --whitespace=nowarn "$W/extra/craft-i18n.patch"; fi
-          else fetch craft-i18n craft-i18n "$I18"; fi
+          else fetch craft-i18n craft-i18n "$I18"
+            if [ -f "extra/craft-i18n-$A.patch" ]; then git -C craft-i18n apply --whitespace=nowarn "$W/extra/craft-i18n-$A.patch"; fi
+          fi
           case "$SRC" in
             tar:*) tar xzf "bundle/$A-src.tar.gz"; mv "${SRC#tar:}" appsrc ;;
             git:*) fetch "$A" appsrc "${SRC#git:}"; git -C appsrc apply --whitespace=nowarn "$W/patches/$A.patch" ;;

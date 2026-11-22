@@ -30,12 +30,34 @@ jobs:
         run: |
           tar xzf bundle/launcher-src.tar.gz
           cd craftoffice
+          if [ -f ../extra/launcher.patch ]; then git apply --whitespace=nowarn ../extra/launcher.patch; fi
           cargo build --release
           mkdir -p ../out
           cp target/release/craftoffice.exe ../out/
       - uses: actions/upload-artifact@v4
         with:
           name: app-craftoffice
+          path: out/
+
+  sketch:
+    if: ${{ !inputs.only || inputs.only == 'sketch' }}
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build CraftOffice Sketch
+        shell: bash
+        run: |
+          cd sketch
+          cargo build --release
+          V=$(cargo pkgid | sed -E 's/.*[#@]([0-9][^#@]*)$/\1/')
+          N="CraftOffice Sketch"
+          mkdir -p "../out/apps/$N"
+          cp target/release/sketch.exe "../out/apps/$N/$N.exe"
+          printf '{"id":"sketch","version":"%s","exe":"%s.exe"}' "$V" "$N" > "../out/apps/$N/craftoffice.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-sketch
           path: out/
 
   app:
@@ -91,6 +113,8 @@ jobs:
             if [ -f extra/craft-i18n.patch ]; then git -C craft-i18n apply --whitespace=nowarn "$W/extra/craft-i18n.patch"; fi
           else
             fetch craft-i18n craft-i18n "$REF"
+            # an app with its own translations version: CraftOffice's additions to it
+            if [ -f "extra/craft-i18n-${{ matrix.app }}.patch" ]; then git -C craft-i18n apply --whitespace=nowarn "$W/extra/craft-i18n-${{ matrix.app }}.patch"; fi
           fi
           SRC="${{ matrix.src }}"
           case "$SRC" in
@@ -137,7 +161,7 @@ jobs:
           path: out/
 
   package:
-    needs: [launcher, app]
+    needs: [launcher, sketch, app]
     if: always()
     runs-on: ubuntu-latest
     steps:

@@ -45,6 +45,7 @@ jobs:
           - { app: materialcraft,  name: "CraftOffice Material",  port: 47914 }
           - { app: texturecraft,   name: "CraftOffice Texture",   port: 47915 }
           - { app: craft-anything, name: "CraftOffice Workshop",  port: 47916 }
+          - { app: sketch,         name: "CraftOffice Sketch",    port: 47917 }
     steps:
       - uses: actions/checkout@v4
         if: ${{ !inputs.only || inputs.only == matrix.app }}

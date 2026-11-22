@@ -27,7 +27,7 @@ jobs:
       fail-fast: false
       max-parallel: 8
       matrix:
-        app: [wordcraft, gridcraft, pdfcraft, photocraft, deckcraft, designcraft, vectorcraft, lightcraft, filmcraft, effectcraft, soundcraft, figcraft, cadcraft, materialcraft, texturecraft, craft-anything]
+        app: [sketch, wordcraft, gridcraft, pdfcraft, photocraft, deckcraft, designcraft, vectorcraft, lightcraft, filmcraft, effectcraft, soundcraft, figcraft, cadcraft, materialcraft, texturecraft, craft-anything]
     steps:
       - uses: actions/checkout@v4
         if: ${{ !inputs.only || inputs.only == matrix.app }}
@@ -49,6 +49,11 @@ jobs:
           W="$GITHUB_WORKSPACE"
           fetch() { mkdir -p "$2"; git -C "$2" init -q; git -C "$2" fetch -q --depth 1 "https://github.com/storytold/$1.git" "$3"; git -C "$2" checkout -q FETCH_HEAD; }
           A="${{ matrix.app }}"
+          if [ "$A" = sketch ]; then
+            # CraftOffice Sketch: its own source in this repository
+            (cd sketch && trunk build --release)
+            mkdir -p out/sketch; cp -r sketch/dist/. out/sketch/; du -sh out/sketch; exit 0
+          fi
           SRC=$(grep -E "^ *- \\{ app: $A," .github/workflows/build.yml | head -1 | sed -E 's/.*src: ([^ ,}]+).*/\1/')
           I18=$(grep -E "^ *- \\{ app: $A," .github/workflows/build.yml | head -1 | grep -oE "i18n: [0-9a-f]+" | cut -d' ' -f2 || true)
           tar xzf bundle/patches.tar.gz; tar xzf bundle/egui036.tar.gz
@@ -56,7 +61,9 @@ jobs:
           fetch egui egui-hook "$EGUI_REF"; git -C egui-hook apply --whitespace=nowarn "$W/patches/egui.patch"
           if [ -z "$I18" ]; then fetch craft-i18n craft-i18n "$I18N_REF"; git -C craft-i18n apply --whitespace=nowarn "$W/patches/craft-i18n.patch"
             if [ -f extra/craft-i18n.patch ]; then git -C craft-i18n apply --whitespace=nowarn "$W/extra/craft-i18n.patch"; fi
-          else fetch craft-i18n craft-i18n "$I18"; fi
+          else fetch craft-i18n craft-i18n "$I18"
+            if [ -f "extra/craft-i18n-$A.patch" ]; then git -C craft-i18n apply --whitespace=nowarn "$W/extra/craft-i18n-$A.patch"; fi
+          fi
           case "$SRC" in
             tar:*) tar xzf "bundle/$A-src.tar.gz"; mv "${SRC#tar:}" appsrc ;;
             git:*) fetch "$A" appsrc "${SRC#git:}"; git -C appsrc apply --whitespace=nowarn "$W/patches/$A.patch" ;;
@@ -108,7 +115,7 @@ jobs:
           cp web/index.html web/manifest.webmanifest web/sw.js craftoffice-web/site/
           cp web/Caddyfile web/install.sh craftoffice-web/
           chmod +x craftoffice-web/install.sh
-          for id in craftoffice wordcraft gridcraft pdfcraft photocraft deckcraft designcraft vectorcraft lightcraft filmcraft effectcraft soundcraft figcraft cadcraft materialcraft texturecraft craft-anything; do
+          for id in craftoffice sketch wordcraft gridcraft pdfcraft photocraft deckcraft designcraft vectorcraft lightcraft filmcraft effectcraft soundcraft figcraft cadcraft materialcraft texturecraft craft-anything; do
             python3 web/icons.py "$id" /tmp/ic >/dev/null
             cp "/tmp/ic/$id-128.png" craftoffice-web/site/icons/
           done
