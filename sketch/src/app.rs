@@ -1499,11 +1499,26 @@ impl eframe::App for SketchApp {
         let dropped = ctx.input(|i| i.raw.dropped_files.clone());
         for f in dropped {
             let shift = ctx.input(|i| i.modifiers.shift);
+            #[cfg(not(target_arch = "wasm32"))]
             if let Ok(bytes) = f.bytes() {
                 let p = f.path();
                 let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let path = if cfg!(target_arch = "wasm32") || p.as_os_str().is_empty() { None } else { Some(p.to_string_lossy().into_owned()) };
+                let path = if p.as_os_str().is_empty() { None } else { Some(p.to_string_lossy().into_owned()) };
                 self.open_bytes(name, path, bytes, shift);
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                // in the browser the bytes arrive asynchronously; they come back through the Io channel
+                let tx = self.io_tx.clone();
+                let ctx2 = ctx.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let name = f.path().file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    match f.bytes_async().await {
+                        Ok(bytes) => { let _ = tx.send(Io::Opened { name, path: None, bytes, as_layer: shift }); }
+                        Err(e) => { let _ = tx.send(Io::Failed(e)); }
+                    }
+                    ctx2.request_repaint();
+                });
             }
         }
         self.shortcuts_input(&ctx);
