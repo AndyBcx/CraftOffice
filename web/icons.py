@@ -18,6 +18,7 @@ COLORS = {
     "effectcraft": (0xA8, 0x5C, 0xD0), "soundcraft": (0x14, 0xA8, 0xB8), "anicraft": (0xE5, 0x5B, 0x8F),
     "figcraft": (0xC2, 0x4E, 0x9E), "cadcraft": (0x6B, 0x7A, 0x8F), "materialcraft": (0x7A, 0x8B, 0x3A),
     "texturecraft": (0x9C, 0x6B, 0x3F), "craft-anything": (0x3B, 0x6E, 0xF0),
+    "sketch": (0xE0, 0x5A, 0x8A),
 }
 
 
@@ -181,6 +182,10 @@ def glyph(d, kind, ox, oy, u, col):
         line(pts, thin)
         line([(3.5, 12.0), (20.5, 12.0)], thin)
         poly([(12.0, 3.5), (15.6, 4.3), (18.6, 6.4), (12.0, 12.0)], dim(0.75))
+    elif kind == "sketch":
+        line([(3.5, 19.0), (6.5, 16.0), (9.5, 18.0), (12.5, 15.5), (15.0, 17.0)], thin)
+        closed([(8.0, 13.0), (17.0, 4.0), (20.0, 7.0), (11.0, 16.0), (7.0, 17.0)])
+        line([(15.0, 6.0), (18.0, 9.0)], thin)
     elif kind == "craft-anything":
         line([(8.5, 6.5), (3.5, 12.0), (8.5, 17.5)])
         line([(15.5, 6.5), (20.5, 12.0), (15.5, 17.5)])
