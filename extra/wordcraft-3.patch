@@ -1,0 +1,100 @@
+diff --git a/apps/wordcraft-web/Cargo.toml b/apps/wordcraft-web/Cargo.toml
+index 8c42c98..35921bd 100644
+--- a/apps/wordcraft-web/Cargo.toml
++++ b/apps/wordcraft-web/Cargo.toml
+@@ -33,4 +33,4 @@ rfd = { workspace = true }
+ wasm-bindgen = "0.2"
+ wasm-bindgen-futures = "0.4"
+ js-sys = "0.3"
+-web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "HtmlAnchorElement", "HtmlIFrameElement", "Blob", "BlobPropertyBag", "Url", "Location", "CssStyleDeclaration", "Event", "EventTarget", "BeforeUnloadEvent", "ClipboardEvent", "DataTransfer", "FileList", "File", "DomStringList", "IdbFactory", "IdbOpenDbRequest", "IdbRequest", "IdbDatabase", "IdbObjectStore", "IdbTransaction", "IdbTransactionMode", "MediaQueryList", "Storage", "MessageEvent", "UrlSearchParams", "CustomEvent", "CustomEventInit"] }
++web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "HtmlAnchorElement", "HtmlIFrameElement", "Blob", "BlobPropertyBag", "Url", "Location", "CssStyleDeclaration", "Event", "EventTarget", "BeforeUnloadEvent", "ClipboardEvent", "DataTransfer", "FileList", "File", "DomStringList", "IdbFactory", "IdbOpenDbRequest", "IdbRequest", "IdbDatabase", "IdbObjectStore", "IdbTransaction", "IdbTransactionMode", "MediaQueryList", "Storage", "MessageEvent", "UrlSearchParams", "CustomEvent", "CustomEventInit", "Response"] }
+diff --git a/apps/wordcraft-web/src/web.rs b/apps/wordcraft-web/src/web.rs
+index fb808de..7ef1af7 100644
+--- a/apps/wordcraft-web/src/web.rs
++++ b/apps/wordcraft-web/src/web.rs
+@@ -58,6 +58,8 @@ pub fn start() {
+                     }
+                     // Fonts the user added on an earlier visit (#582); the app notices them arrive.
+                     font_store::load_all(cc.egui_ctx.clone());
++                    // CraftOffice: the fonts that come with the app (Liberation, Carlito, DejaVu…).
++                    craftoffice_fonts(cc.egui_ctx.clone());
+                     let inbox: Inbox = Inbox::default();
+                     let pasted: Inbox = Inbox::default();
+                     if let Err(e) = listen_for_pasted_pictures(pasted.clone(), cc.egui_ctx.clone()) {
+@@ -118,7 +120,7 @@ pub fn start() {
+         if let Some(el) = document.get_element_by_id(LOADING_ID) {
+             match result {
+                 Ok(()) => el.remove(),
+-                Err(e) => el.set_inner_html(&format!("<p>WordCraft failed to start: {e:?}</p><p>A browser with WebGPU or WebGL2 is required.</p>")),
++                Err(e) => el.set_inner_html(&format!("<p>CraftOffice Writer failed to start: {e:?}</p><p>A browser with WebGPU or WebGL2 is required.</p>")),
+             }
+         }
+     });
+@@ -410,6 +412,44 @@ fn load_system_fonts(ctx: egui::Context, messages: Rc<RefCell<Vec<String>>>) {
+     });
+ }
+ 
++/// CraftOffice: add the fonts that come with the app to the font database. They are files beside
++/// the page (`fonts/list.txt` names them, one per line), fetched after the window is up, so a
++/// phone or a browser without the usual document fonts (Arial, Times New Roman, Calibri…) has
++/// their metric-compatible twins and other common faces. A missing list adds nothing.
++fn craftoffice_fonts(ctx: egui::Context) {
++    async fn fetch(window: &web_sys::Window, url: &str) -> Option<Vec<u8>> {
++        let resp = wasm_bindgen_futures::JsFuture::from(window.fetch_with_str(url)).await.ok()?;
++        let resp: web_sys::Response = resp.dyn_into().ok()?;
++        if !resp.ok() {
++            return None;
++        }
++        let buf = wasm_bindgen_futures::JsFuture::from(resp.array_buffer().ok()?).await.ok()?;
++        Some(js_sys::Uint8Array::new(&buf).to_vec())
++    }
++    wasm_bindgen_futures::spawn_local(async move {
++        let Some(window) = web_sys::window() else { return };
++        let Some(list) = fetch(&window, "fonts/list.txt").await else { return };
++        let list = String::from_utf8_lossy(&list).into_owned();
++        let mut added = 0usize;
++        for name in list.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
++            let Some(bytes) = fetch(&window, &format!("fonts/{name}")).await else {
++                log::warn!("font {name} is missing");
++                continue;
++            };
++            match wordcraft_fonts::FontDb::global().install_font(name, &bytes) {
++                Ok(_) => added += 1,
++                Err(wordcraft_fonts::UserFontError::AlreadyAvailable(_)) => {}
++                Err(e) => log::warn!("font {name} skipped: {e}"),
++            }
++            if added % 8 == 0 {
++                ctx.request_repaint();
++            }
++        }
++        log::info!("CraftOffice: {added} fonts added");
++        ctx.request_repaint();
++    });
++}
++
+ /// Whether the system has animation effects on, as the browser passes it on: off while the
+ /// `prefers-reduced-motion: reduce` media query matches. `None` when the browser can't say. The
+ /// query is made once and asked every frame; it follows the system's setting by itself.
+diff --git a/crates/ui-egui/src/app/frame.rs b/crates/ui-egui/src/app/frame.rs
+index 41d5f88..8da2673 100644
+--- a/crates/ui-egui/src/app/frame.rs
++++ b/crates/ui-egui/src/app/frame.rs
+@@ -24,13 +24,16 @@ impl WordApp {
+ 
+     /// Sets a temporary status message in the bottom status bar.
+     pub fn status(&mut self, s: impl Into<String>) {
+-        self.status_msg = Some((s.into(), now_ms()));
++        // CraftOffice: the app's own name in messages from the engine, too.
++        let s: String = s.into();
++        self.status_msg = Some((crate::craftoffice_brand::brand(&s).to_string(), now_ms()));
+     }
+ 
+     /// A status message that stays [`STATUS_LONG_MS`] instead of the usual six seconds: the bar
+     /// shows a message until six seconds after its time, so its time is set that much later.
+     pub fn status_long(&mut self, s: impl Into<String>) {
+-        self.status_msg = Some((s.into(), now_ms() + STATUS_LONG_MS - STATUS_MS));
++        let s: String = s.into();
++        self.status_msg = Some((crate::craftoffice_brand::brand(&s).to_string(), now_ms() + STATUS_LONG_MS - STATUS_MS));
+     }
+ 
+     /// Write the current preferences out through the host's hook, if it has one (#2716). The
