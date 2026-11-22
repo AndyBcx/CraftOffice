@@ -2,6 +2,7 @@ package app.craftoffice
 
 import android.app.Activity
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.system.Os
@@ -50,8 +51,13 @@ class MainActivity : Activity() {
             allowFileAccess = false
             mediaPlaybackRequiresUserGesture = false
             cacheMode = WebSettings.LOAD_DEFAULT
-            useWideViewPort = true
-            loadWithOverviewMode = true
+            // The page is laid out at the screen's own width, never zoomed out to an "overview":
+            // turning the phone then lays it out again at the new width (#rotation).
+            useWideViewPort = false
+            loadWithOverviewMode = false
+            setSupportZoom(false)
+            builtInZoomControls = false
+            displayZoomControls = false
         }
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
@@ -184,6 +190,15 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Turning the phone: the app keeps running (no restart); the page is told its new size. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        web.requestLayout()
+        for (delay in longArrayOf(50L, 300L, 800L)) {
+            web.postDelayed({ web.evaluateJavascript(RESIZE, null) }, delay)
+        }
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (web.canGoBack()) web.goBack() else super.onBackPressed()
@@ -192,6 +207,20 @@ class MainActivity : Activity() {
     companion object {
         private const val REQ_OPEN = 1
         private const val REQ_SAVE = 2
+
+        /** The page's new size after the screen turned: the canvas follows the window. */
+        private const val RESIZE = """
+(function () {
+  var w = window.innerWidth, h = window.innerHeight;
+  document.querySelectorAll("canvas").forEach(function (c) {
+    if (c.style.position === "absolute" || getComputedStyle(c).position === "absolute") {
+      c.style.width = w + "px"; c.style.height = h + "px";
+      requestAnimationFrame(function () { c.style.width = "100%"; c.style.height = "100%"; });
+    }
+  });
+  window.dispatchEvent(new Event("resize"));
+})();
+"""
 
         /** Downloads made by the page (a link with `download`) go to the system "Save to" screen. */
         private const val SAVE_BRIDGE = """
