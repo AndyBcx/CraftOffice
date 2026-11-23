@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::raster::{Doc, Layer};
+use crate::raster::{Blend, Doc, Layer};
 
 const MAGIC: &[u8] = b"COSKETCH 1\n";
 
@@ -22,6 +22,8 @@ struct LayerHeader {
     name: String,
     visible: bool,
     opacity: f32,
+    #[serde(default)]
+    blend: Blend,
     png: usize,
 }
 
@@ -49,7 +51,7 @@ pub fn save_project(doc: &Doc) -> Result<Vec<u8>, String> {
             .layers
             .iter()
             .zip(&pngs)
-            .map(|(l, p)| LayerHeader { name: l.name.clone(), visible: l.visible, opacity: l.opacity, png: p.len() })
+            .map(|(l, p)| LayerHeader { name: l.name.clone(), visible: l.visible, opacity: l.opacity, blend: l.blend, png: p.len() })
             .collect(),
     };
     let mut out = MAGIC.to_vec();
@@ -80,7 +82,7 @@ pub fn load_project(bytes: &[u8]) -> Result<Doc, String> {
         if img.width() != header.w || img.height() != header.h {
             return Err("damaged file".into());
         }
-        layers.push(Layer { name: lh.name, visible: lh.visible, opacity: lh.opacity.clamp(0.0, 1.0), px: img.into_raw() });
+        layers.push(Layer { name: lh.name, visible: lh.visible, opacity: lh.opacity.clamp(0.0, 1.0), blend: lh.blend, px: img.into_raw() });
         at = end;
     }
     let active = header.active.min(layers.len() - 1);
@@ -139,6 +141,7 @@ mod tests {
         d.layers[1].px[0..4].copy_from_slice(&[10, 20, 30, 200]);
         d.layers[1].opacity = 0.5;
         d.layers[0].visible = false;
+        d.layers[1].blend = Blend::Multiply;
         let bytes = save_project(&d).unwrap();
         assert!(is_project(&bytes));
         let e = load_project(&bytes).unwrap();
@@ -146,6 +149,7 @@ mod tests {
         assert_eq!(e.layers[1].name, "Ink");
         assert_eq!(&e.layers[1].px[0..4], &[10, 20, 30, 200]);
         assert!(!e.layers[0].visible);
+        assert_eq!(e.layers[1].blend, Blend::Multiply);
         assert!(load_project(&bytes[..bytes.len() - 3]).is_err());
         let p = export_png(&d).unwrap();
         let (w, h, _) = decode_image(&p).unwrap();

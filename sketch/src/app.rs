@@ -6,10 +6,13 @@ use egui::{pos2, vec2, Align2, Color32, CornerRadius, FontId, Key, Pos2, Rect, S
 
 use crate::files;
 use crate::i18n::{self, t, Lang};
-use crate::raster::{self, Brush, Doc, History, IRect, Mode, Shape, Stroke, Transform, Undo};
+use crate::raster::{self, Blend, Brush, Doc, Gradient, History, IRect, Mode, Moving, Shape, Stroke, Tip, Transform, Undo};
+use crate::text;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Tool {
+    Select,
+    Move,
     Pencil,
     Pen,
     Brush,
@@ -17,14 +20,18 @@ pub enum Tool {
     Airbrush,
     Eraser,
     Fill,
+    Gradient,
     Eyedropper,
     Line,
     Rect,
     Ellipse,
+    Text,
     Hand,
 }
 
-const TOOLS: [(Tool, &str, &str); 12] = [
+const TOOLS: [(Tool, &str, &str); 16] = [
+    (Tool::Select, "Select", "S"),
+    (Tool::Move, "Move", "V"),
     (Tool::Pencil, "Pencil", "P"),
     (Tool::Pen, "Pen", "N"),
     (Tool::Brush, "Brush", "B"),
@@ -32,10 +39,12 @@ const TOOLS: [(Tool, &str, &str); 12] = [
     (Tool::Airbrush, "Airbrush", "A"),
     (Tool::Eraser, "Eraser", "E"),
     (Tool::Fill, "Fill", "G"),
+    (Tool::Gradient, "Gradient", "D"),
     (Tool::Eyedropper, "Eyedropper", "I"),
     (Tool::Line, "Line", "L"),
     (Tool::Rect, "Rectangle", "U"),
     (Tool::Ellipse, "Ellipse", "O"),
+    (Tool::Text, "Text", "T"),
     (Tool::Hand, "Hand", "H"),
 ];
 
@@ -56,8 +65,8 @@ impl Tool {
             Tool::Airbrush => (60.0, 1.0, 0.0),
             Tool::Eraser => (24.0, 1.0, 0.8),
             Tool::Line | Tool::Rect | Tool::Ellipse => (4.0, 1.0, 1.0),
-            Tool::Fill => (1.0, 1.0, 1.0),
-            Tool::Eyedropper | Tool::Hand => (1.0, 1.0, 1.0),
+            Tool::Fill | Tool::Gradient => (1.0, 1.0, 1.0),
+            Tool::Eyedropper | Tool::Hand | Tool::Select | Tool::Move | Tool::Text => (1.0, 1.0, 1.0),
         };
         ToolSettings { size, opacity, hardness }
     }
@@ -83,6 +92,8 @@ pub enum Io {
     Opened { name: String, path: Option<String>, bytes: Vec<u8>, as_layer: bool },
     /// Where to save (native).
     SaveTo { path: String, kind: SaveKind },
+    /// A font file for the Text tool.
+    Font { name: String, bytes: Vec<u8> },
     Failed(String),
 }
 
@@ -109,6 +120,18 @@ struct NewDlg {
     white: bool,
 }
 
+struct TextDlg {
+    pos: (f32, f32),
+    text: String,
+    size: f32,
+    font: usize,
+    align: text::Align,
+    /// What the preview was made from, and the preview itself.
+    key: String,
+    mask: Option<text::Mask>,
+    tex: Option<TextureHandle>,
+}
+
 struct SizeDlg {
     w: u32,
     h: u32,
@@ -118,9 +141,10 @@ struct SizeDlg {
 pub struct SketchApp {
     doc: Doc,
     hist: History,
-    textures: Vec<Option<TextureHandle>>,
-    /// Layers whose texture must be rebuilt, or regions to update.
-    tex_dirty: Vec<IRect>,
+    /// The composited picture (all layers with their blend modes) shown on the canvas.
+    comp: Option<TextureHandle>,
+    /// The part of the picture to composite again.
+    comp_dirty: IRect,
     rebuild: bool,
     checker: Option<TextureHandle>,
     name: String,
@@ -157,6 +181,23 @@ pub struct SketchApp {
     io_rx: Receiver<Io>,
     max_side: u32,
     hover: Option<(f32, f32)>,
+    tips: std::collections::HashMap<Tool, Tip>,
+    selection: Option<IRect>,
+    sel_start: Option<(f32, f32)>,
+    moving: Option<Moving>,
+    move_start: Option<(f32, f32)>,
+    grad_kind: Gradient,
+    grad_fade: bool,
+    grad_start: Option<(f32, f32)>,
+    grad_end: Option<(f32, f32)>,
+    text_dlg: Option<TextDlg>,
+    text_size: f32,
+    text_font: usize,
+    fonts: Vec<(String, ab_glyph::FontArc)>,
+    clipboard: Option<(IRect, Vec<u8>)>,
+    /// 0 copy, 1 cut, 2 paste, from the keyboard.
+    clip_cmd: Option<u8>,
+    move_off: (i64, i64),
 }
 
 const PALETTE: [[u8; 3]; 18] = [
@@ -189,8 +230,8 @@ impl SketchApp {
         let mut app = SketchApp {
             doc: Doc::new(1600, 1200, Some([255, 255, 255, 255]), t("Background"), &format!("{} 1", t("Layer"))),
             hist: History::default(),
-            textures: Vec::new(),
-            tex_dirty: Vec::new(),
+            comp: None,
+            comp_dirty: IRect::empty(),
             rebuild: true,
             checker: None,
             name: t("Untitled").to_string(),
@@ -227,6 +268,22 @@ impl SketchApp {
             io_rx,
             max_side,
             hover: None,
+            tips: TOOLS.iter().map(|(tl, _, _)| (*tl, Tip::Round)).collect(),
+            selection: None,
+            sel_start: None,
+            moving: None,
+            move_start: None,
+            grad_kind: Gradient::Linear,
+            grad_fade: false,
+            grad_start: None,
+            grad_end: None,
+            text_dlg: None,
+            text_size: 64.0,
+            text_font: 0,
+            fonts: text::built_in(),
+            clipboard: None,
+            clip_cmd: None,
+            move_off: (0, 0),
         };
         if let Some((name, path, bytes)) = open {
             app.open_bytes(name, path, bytes, false);
@@ -253,6 +310,9 @@ impl SketchApp {
         self.rebuild = true;
         self.fit = true;
         self.stroke = None;
+        self.moving = None;
+        self.selection = None;
+        self.text_dlg = None;
     }
 
     fn open_bytes(&mut self, name: String, path: Option<String>, bytes: Vec<u8>, as_layer: bool) {
@@ -324,11 +384,7 @@ impl SketchApp {
     }
 
     fn mark(&mut self, r: IRect) {
-        let l = self.doc.active;
-        if self.tex_dirty.len() <= l {
-            self.tex_dirty.resize(self.doc.layers.len(), IRect::empty());
-        }
-        self.tex_dirty[l].union(r);
+        self.comp_dirty.union(r);
     }
 
     fn undo(&mut self) {
@@ -352,40 +408,104 @@ impl SketchApp {
             self.doc.layers[l].px = s.before;
             self.rebuild = true;
         }
+        if let Some(m) = self.moving.take() {
+            m.cancel(&mut self.doc);
+            self.rebuild = true;
+        }
+        self.move_start = None;
         self.shape_start = None;
         self.shape_end = None;
+        self.grad_start = None;
+        self.grad_end = None;
+        self.sel_start = None;
+    }
+
+    /// Finish a move in progress.
+    fn drop_moving(&mut self) {
+        if let Some(m) = self.moving.take() {
+            let dst = m.dst;
+            let u = m.end(&self.doc);
+            self.pixels(u);
+            if self.selection.is_some() {
+                self.selection = Some(dst).filter(|r| !r.is_empty());
+            }
+        }
+        self.move_start = None;
+    }
+
+    // ---- selection and clipboard ----
+
+    /// The selection, or the whole canvas.
+    fn sel_or_all(&self) -> IRect {
+        self.selection.unwrap_or(self.doc.full())
+    }
+
+    fn copy(&mut self) {
+        let r = self.sel_or_all();
+        let data = raster::crop(&self.doc.layers[self.doc.active].px, self.doc.w, r);
+        self.clipboard = Some((r, data));
+    }
+
+    fn delete_selection(&mut self) {
+        if let Some(r) = self.selection {
+            let l = self.doc.active;
+            let u = raster::clear_rect(&mut self.doc, l, r);
+            self.pixels(u);
+        }
+    }
+
+    fn cut(&mut self) {
+        self.copy();
+        let r = self.sel_or_all();
+        let l = self.doc.active;
+        let u = raster::clear_rect(&mut self.doc, l, r);
+        self.pixels(u);
+    }
+
+    /// Paste as a new layer, where it was copied from (or centred if that is off the canvas).
+    fn paste(&mut self) {
+        let Some((r, data)) = self.clipboard.clone() else { return };
+        let (w, h) = (r.width(), r.height());
+        let (mut x0, mut y0) = (r.x0, r.y0);
+        if x0 + w > self.doc.w || y0 + h > self.doc.h {
+            x0 = self.doc.w.saturating_sub(w) / 2;
+            y0 = self.doc.h.saturating_sub(h) / 2;
+        }
+        let dst = IRect { x0, y0, x1: (x0 + w).min(self.doc.w), y1: (y0 + h).min(self.doc.h) };
+        let name = t("Pasted").to_string();
+        self.doc_op(|d| {
+            let mut l = raster::Layer::new(name, d.w, d.h, [0, 0, 0, 0]);
+            raster::over(&mut l.px, d.w, dst, &data, w, 0, 0);
+            let at = d.active + 1;
+            d.layers.insert(at, l);
+            d.active = at;
+        });
+        self.selection = Some(dst);
+        self.tool = Tool::Move;
     }
 
     // ---- textures ----
 
     fn sync_textures(&mut self, ctx: &egui::Context) {
         let opts = TextureOptions { magnification: egui::TextureFilter::Nearest, minification: egui::TextureFilter::Linear, ..Default::default() };
-        if self.rebuild || self.textures.len() != self.doc.layers.len() {
-            self.textures = self
-                .doc
-                .layers
-                .iter()
-                .enumerate()
-                .map(|(i, l)| {
-                    let img = egui::ColorImage::from_rgba_unmultiplied([self.doc.w as usize, self.doc.h as usize], &l.px);
-                    Some(ctx.load_texture(format!("layer-{i}"), img, opts))
-                })
-                .collect();
-            self.tex_dirty = vec![IRect::empty(); self.doc.layers.len()];
+        let size = [self.doc.w as usize, self.doc.h as usize];
+        if self.rebuild || self.comp.as_ref().is_none_or(|t| t.size() != size) {
+            let px = self.doc.composite(self.doc.full(), None);
+            let img = egui::ColorImage::from_rgba_unmultiplied(size, &px);
+            self.comp = Some(ctx.load_texture("picture", img, opts));
+            self.comp_dirty = IRect::empty();
             self.rebuild = false;
             return;
         }
-        for (i, r) in self.tex_dirty.iter_mut().enumerate() {
-            if r.is_empty() {
-                continue;
-            }
-            let rr = IRect { x0: r.x0, y0: r.y0, x1: r.x1.min(self.doc.w), y1: r.y1.min(self.doc.h) };
-            if let (Some(Some(tex)), false) = (self.textures.get_mut(i), rr.is_empty()) {
-                let data = raster::crop(&self.doc.layers[i].px, self.doc.w, rr);
-                let img = egui::ColorImage::from_rgba_unmultiplied([rr.width() as usize, rr.height() as usize], &data);
-                tex.set_partial([rr.x0 as usize, rr.y0 as usize], img, opts);
-            }
-            *r = IRect::empty();
+        let r = self.comp_dirty.intersect(self.doc.full());
+        self.comp_dirty = IRect::empty();
+        if r.is_empty() {
+            return;
+        }
+        if let Some(tex) = self.comp.as_mut() {
+            let data = self.doc.composite(r, None);
+            let img = egui::ColorImage::from_rgba_unmultiplied([r.width() as usize, r.height() as usize], &data);
+            tex.set_partial([r.x0 as usize, r.y0 as usize], img, opts);
         }
     }
 
@@ -414,7 +534,9 @@ impl SketchApp {
             Tool::Pencil => (1.0, false, 0.08, Mode::Paint),
             _ => (1.0, false, 0.12, Mode::Paint),
         };
-        Brush { size: s.size, hardness: s.hardness, opacity: s.opacity, flow, buildup, mode, color: [c.r(), c.g(), c.b()], spacing }
+        let tip = self.tips.get(&self.tool).copied().unwrap_or(Tip::Round);
+        let spacing = if tip == Tip::Spray { f32::max(spacing, 0.25) } else { spacing };
+        Brush { size: s.size, hardness: s.hardness, opacity: s.opacity, flow, buildup, mode, color: [c.r(), c.g(), c.b()], spacing, tip }
     }
 
     fn remember_colour(&mut self) {
@@ -458,6 +580,31 @@ impl SketchApp {
                 }
             });
         }
+    }
+
+    fn pick_font(&self) {
+        let tx = self.io_tx.clone();
+        #[cfg(not(target_arch = "wasm32"))]
+        std::thread::spawn(move || {
+            if let Some(p) = rfd::FileDialog::new().add_filter("Fonts", &["ttf", "otf", "ttc"]).pick_file() {
+                let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                match std::fs::read(&p) {
+                    Ok(bytes) => {
+                        let _ = tx.send(Io::Font { name, bytes });
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Io::Failed(e.to_string()));
+                    }
+                }
+            }
+        });
+        #[cfg(target_arch = "wasm32")]
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Some(f) = rfd::AsyncFileDialog::new().add_filter("Fonts", &["ttf", "otf", "ttc"]).pick_file().await {
+                let bytes = f.read().await;
+                let _ = tx.send(Io::Font { name: f.file_name(), bytes });
+            }
+        });
     }
 
     fn save(&mut self, ctx: &egui::Context, kind: SaveKind, ask: bool) {
@@ -541,6 +688,17 @@ impl SketchApp {
                     #[cfg(target_arch = "wasm32")]
                     let _ = (path, kind);
                 }
+                Io::Font { name, bytes } => match text::load(bytes) {
+                    Ok(f) => {
+                        let stem = name.rsplit_once('.').map_or(name.clone(), |(s, _)| s.to_string());
+                        self.fonts.push((stem, f));
+                        self.text_font = self.fonts.len() - 1;
+                        if let Some(d) = self.text_dlg.as_mut() {
+                            d.font = self.text_font;
+                        }
+                    }
+                    Err(e) => self.set_toast(ctx, format!("{}: {e}", t("Could not open the file"))),
+                },
                 Io::Failed(e) => self.set_toast(ctx, format!("{}: {e}", t("Could not open the file"))),
             }
         }
@@ -549,7 +707,7 @@ impl SketchApp {
     // ---- keyboard ----
 
     fn shortcuts_input(&mut self, ctx: &egui::Context) {
-        if ctx.egui_wants_keyboard_input() || self.new_dlg.is_some() || self.size_dlg.is_some() || self.rename.is_some() {
+        if ctx.egui_wants_keyboard_input() || self.new_dlg.is_some() || self.size_dlg.is_some() || self.rename.is_some() || self.text_dlg.is_some() {
             return;
         }
         let (cmd, shift) = ctx.input(|i| (i.modifiers.command, i.modifiers.shift));
@@ -584,6 +742,23 @@ impl SketchApp {
                 self.zoom = 1.0;
                 self.pan = Vec2::ZERO;
             }
+            if pressed(Key::A) {
+                self.drop_moving();
+                self.selection = Some(self.doc.full());
+            }
+            if pressed(Key::D) {
+                self.drop_moving();
+                self.selection = None;
+            }
+            if pressed(Key::C) {
+                self.clip_cmd = Some(0);
+            }
+            if pressed(Key::X) {
+                self.clip_cmd = Some(1);
+            }
+            if pressed(Key::V) {
+                self.clip_cmd = Some(2);
+            }
             return;
         }
         for (tl, _, key) in TOOLS {
@@ -615,6 +790,43 @@ impl SketchApp {
         }
         if pressed(Key::Escape) {
             self.cancel_stroke();
+        }
+        if pressed(Key::Delete) || pressed(Key::Backspace) {
+            self.drop_moving();
+            self.delete_selection();
+        }
+        if pressed(Key::Enter) {
+            self.drop_moving();
+        }
+    }
+
+    /// Clipboard commands from the keyboard (they arrive as events, so they are handled once here).
+    fn clip_commands(&mut self, ctx: &egui::Context) {
+        ctx.input(|i| {
+            for e in &i.events {
+                match e {
+                    egui::Event::Copy => self.clip_cmd = Some(0),
+                    egui::Event::Cut => self.clip_cmd = Some(1),
+                    egui::Event::Paste(_) => self.clip_cmd = Some(2),
+                    _ => {}
+                }
+            }
+        });
+        if ctx.egui_wants_keyboard_input() || self.text_dlg.is_some() {
+            self.clip_cmd = None;
+            return;
+        }
+        match self.clip_cmd.take() {
+            Some(0) => self.copy(),
+            Some(1) => {
+                self.drop_moving();
+                self.cut();
+            }
+            Some(2) => {
+                self.drop_moving();
+                self.paste();
+            }
+            _ => {}
         }
     }
 
@@ -674,6 +886,37 @@ impl SketchApp {
                     ui.close();
                 }
                 ui.separator();
+                if ui.button(format!("{}   Ctrl+X", t("Cut"))).clicked() {
+                    self.drop_moving();
+                    self.cut();
+                    ui.close();
+                }
+                if ui.button(format!("{}   Ctrl+C", t("Copy"))).clicked() {
+                    self.copy();
+                    ui.close();
+                }
+                if ui.add_enabled(self.clipboard.is_some(), egui::Button::new(format!("{}   Ctrl+V", t("Paste as New Layer")))).clicked() {
+                    self.drop_moving();
+                    self.paste();
+                    ui.close();
+                }
+                if ui.add_enabled(self.selection.is_some(), egui::Button::new(format!("{}   Del", t("Delete Selection")))).clicked() {
+                    self.drop_moving();
+                    self.delete_selection();
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button(format!("{}   Ctrl+A", t("Select All"))).clicked() {
+                    self.drop_moving();
+                    self.selection = Some(self.doc.full());
+                    ui.close();
+                }
+                if ui.add_enabled(self.selection.is_some(), egui::Button::new(format!("{}   Ctrl+D", t("Deselect")))).clicked() {
+                    self.drop_moving();
+                    self.selection = None;
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button(t("Clear Layer")).clicked() {
                     self.doc_op(|d| {
                         let a = d.active;
@@ -706,6 +949,14 @@ impl SketchApp {
                     }
                 }
                 ui.separator();
+                if ui.add_enabled(self.selection.is_some(), egui::Button::new(t("Crop to Selection"))).clicked() {
+                    self.drop_moving();
+                    if let Some(r) = self.selection.take() {
+                        self.doc_op(|d| raster::crop_doc(d, r));
+                        self.fit = true;
+                    }
+                    ui.close();
+                }
                 if ui.button(t("Canvas Size…")).clicked() {
                     self.size_dlg = Some(SizeDlg { w: self.doc.w, h: self.doc.h, anchor: (0.5, 0.5) });
                     ui.close();
@@ -918,6 +1169,16 @@ impl SketchApp {
                 }
             }
             if tool.paints() {
+                let mut tip = self.tips.get(&tool).copied().unwrap_or(Tip::Round);
+                ui.horizontal(|ui| {
+                    ui.label(t("Brush tip"));
+                    egui::ComboBox::from_id_salt("tip").selected_text(t(tip.name())).show_ui(ui, |ui| {
+                        for k in Tip::ALL {
+                            ui.selectable_value(&mut tip, k, t(k.name()));
+                        }
+                    });
+                });
+                self.tips.insert(tool, tip);
                 let mut sm = self.smoothing * 100.0;
                 if ui.add(egui::Slider::new(&mut sm, 0.0..=90.0).suffix("%").text(t("Smoothing"))).changed() {
                     self.smoothing = sm / 100.0;
@@ -934,6 +1195,31 @@ impl SketchApp {
             if matches!(tool, Tool::Rect | Tool::Ellipse) {
                 ui.checkbox(&mut self.shape_fill, t("Filled shape"));
             }
+            if tool == Tool::Gradient {
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut self.grad_kind, Gradient::Linear, t("Linear"));
+                    ui.radio_value(&mut self.grad_kind, Gradient::Radial, t("Radial"));
+                });
+                ui.radio_value(&mut self.grad_fade, false, t("Colour to secondary colour"));
+                ui.radio_value(&mut self.grad_fade, true, t("Colour to transparent"));
+                ui.label(egui::RichText::new(t("Drag on the canvas to lay the gradient.")).small().weak());
+            }
+            if matches!(tool, Tool::Select | Tool::Move) {
+                ui.label(egui::RichText::new(t(if tool == Tool::Select {
+                    "Drag to select a rectangle; painting stays inside it. Click to deselect."
+                } else {
+                    "Drag to move the selection, or the whole layer when nothing is selected."
+                }))
+                .small()
+                .weak());
+                if let Some(r) = self.selection {
+                    ui.label(format!("{} × {} {}", r.width(), r.height(), t("pixels")));
+                }
+            }
+            if tool == Tool::Text {
+                ui.add(egui::Slider::new(&mut self.text_size, 6.0..=600.0).logarithmic(true).text(t("Size")));
+                ui.label(egui::RichText::new(t("Click on the canvas where the text should go.")).small().weak());
+            }
             ui.separator();
             ui.heading(t("Layers"));
             ui.horizontal_wrapped(|ui| self.layer_actions(ui, false));
@@ -942,6 +1228,18 @@ impl SketchApp {
             if ui.add(egui::Slider::new(&mut op, 0.0..=100.0).suffix("%").text(t("Opacity"))).changed() {
                 self.doc.layers[a].opacity = op / 100.0;
                 self.dirty = true;
+                self.rebuild = true;
+            }
+            let mut blend = self.doc.layers[a].blend;
+            egui::ComboBox::from_id_salt("blend").selected_text(t(blend.name())).show_ui(ui, |ui| {
+                for b in Blend::ALL {
+                    ui.selectable_value(&mut blend, b, t(b.name()));
+                }
+            });
+            if blend != self.doc.layers[a].blend {
+                self.doc.layers[a].blend = blend;
+                self.dirty = true;
+                self.rebuild = true;
             }
             let mut pick = None;
             let mut toggle = None;
@@ -980,8 +1278,10 @@ impl SketchApp {
             if let Some(i) = toggle {
                 self.doc.layers[i].visible = !self.doc.layers[i].visible;
                 self.dirty = true;
+                self.rebuild = true;
             }
             if let Some(i) = pick {
+                self.drop_moving();
                 self.cancel_stroke();
                 self.doc.active = i;
             }
@@ -1041,14 +1341,8 @@ impl SketchApp {
         let checker = self.checker(&ctx);
         let cells = size / 16.0;
         painter.image(checker, img_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(cells.x / 2.0, cells.y / 2.0)), Color32::WHITE);
-        for (i, l) in self.doc.layers.iter().enumerate() {
-            if !l.visible {
-                continue;
-            }
-            if let Some(Some(tex)) = self.textures.get(i) {
-                let a = (l.opacity * 255.0) as u8;
-                painter.image(tex.id(), img_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::from_white_alpha(a));
-            }
+        if let Some(tex) = &self.comp {
+            painter.image(tex.id(), img_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
         painter.rect_stroke(img_rect, 0, UiStroke::new(1.0, Color32::from_black_alpha(120)), egui::StrokeKind::Outside);
 
@@ -1066,6 +1360,7 @@ impl SketchApp {
         let space = ctx.input(|i| i.key_down(Key::Space)) && !ctx.egui_wants_keyboard_input();
         let middle = ctx.input(|i| i.pointer.middle_down());
         let alt = ctx.input(|i| i.modifiers.alt);
+        let shift = ctx.input(|i| i.modifiers.shift);
         let panning = self.tool == Tool::Hand || space || middle;
 
         if multi.is_some() {
@@ -1087,19 +1382,97 @@ impl SketchApp {
                         self.color = Color32::from_rgb(s[0], s[1], s[2]);
                     }
                 }
+            } else if tool == Tool::Select {
+                if resp.drag_started() {
+                    let o = ctx.input(|i| i.pointer.press_origin()).unwrap_or(p);
+                    self.sel_start = Some(self.to_canvas(rect, o));
+                }
+                if let Some(a) = self.sel_start {
+                    let b = if shift { constrain(Shape::Rect, a, c) } else { c };
+                    self.selection = Some(IRect::between(a, b, self.doc.w, self.doc.h)).filter(|r| !r.is_empty());
+                    if resp.drag_stopped() || !ctx.input(|i| i.pointer.any_down()) {
+                        self.sel_start = None;
+                    }
+                } else if resp.clicked() {
+                    self.selection = None;
+                }
+            } else if tool == Tool::Move {
+                if resp.drag_started() && self.moving.is_none() && self.doc.layers[self.doc.active].visible {
+                    let o = ctx.input(|i| i.pointer.press_origin()).unwrap_or(p);
+                    self.move_start = Some(self.to_canvas(rect, o));
+                    self.move_off = (0, 0);
+                    let src = self.sel_or_all();
+                    let layer = self.doc.active;
+                    self.moving = Some(Moving::begin(&mut self.doc, layer, src));
+                    self.mark(src);
+                }
+                if let Some(st) = self.move_start {
+                    let off = ((c.0 - st.0).round() as i64, (c.1 - st.1).round() as i64);
+                    if off != self.move_off {
+                        self.move_off = off;
+                        let ch = self.moving.as_mut().map(|m| m.place(&mut self.doc, off.0, off.1));
+                        if let Some(ch) = ch {
+                            self.mark(ch);
+                        }
+                    }
+                    if resp.drag_stopped() || !ctx.input(|i| i.pointer.any_down()) {
+                        self.drop_moving();
+                    }
+                }
+            } else if tool == Tool::Gradient {
+                if resp.drag_started() {
+                    let o = ctx.input(|i| i.pointer.press_origin()).unwrap_or(p);
+                    self.grad_start = Some(self.to_canvas(rect, o));
+                }
+                if let Some(a) = self.grad_start {
+                    let b = if shift { constrain(Shape::Line, a, c) } else { c };
+                    self.grad_end = Some(b);
+                    if resp.drag_stopped() || !ctx.input(|i| i.pointer.any_down()) {
+                        let (c0, c1) = (self.color, self.secondary);
+                        let start = [c0.r(), c0.g(), c0.b(), 255];
+                        let end = if self.grad_fade { [c0.r(), c0.g(), c0.b(), 0] } else { [c1.r(), c1.g(), c1.b(), 255] };
+                        let op = self.settings[&Tool::Gradient].opacity;
+                        let layer = self.doc.active;
+                        let u = raster::gradient(&mut self.doc, layer, self.grad_kind, a, b, start, end, op, self.selection);
+                        self.pixels(u);
+                        self.remember_colour();
+                        self.grad_start = None;
+                        self.grad_end = None;
+                    }
+                }
+            } else if tool == Tool::Text {
+                if resp.clicked() || resp.drag_started() || resp.dragged() {
+                    let at = if resp.drag_started() { self.to_canvas(rect, ctx.input(|i| i.pointer.press_origin()).unwrap_or(p)) } else { c };
+                    if let Some(d) = self.text_dlg.as_mut() {
+                        d.pos = at;
+                    } else {
+                        self.text_dlg = Some(TextDlg {
+                            pos: at,
+                            text: String::new(),
+                            size: self.text_size,
+                            font: self.text_font.min(self.fonts.len().saturating_sub(1)),
+                            align: text::Align::Left,
+                            key: String::new(),
+                            mask: None,
+                            tex: None,
+                        });
+                    }
+                }
             } else if tool == Tool::Fill {
                 if resp.clicked() && c.0 >= 0.0 && c.1 >= 0.0 {
                     let col = self.color;
                     let op = self.settings[&Tool::Fill].opacity;
                     let layer = self.doc.active;
-                    let u = raster::flood_fill(&mut self.doc, layer, c.0 as u32, c.1 as u32, [col.r(), col.g(), col.b()], op, self.tolerance);
+                    let u = raster::flood_fill(&mut self.doc, layer, c.0 as u32, c.1 as u32, [col.r(), col.g(), col.b()], op, self.tolerance, self.selection);
                     self.pixels(u);
                     self.remember_colour();
                 }
             } else if tool.paints() {
                 if resp.drag_started() || (resp.is_pointer_button_down_on() && self.stroke.is_none() && !resp.dragged()) {
                     if self.stroke.is_none() && self.doc.layers[self.doc.active].visible {
-                        self.stroke = Some(Stroke::begin(&self.doc, self.doc.active, self.brush()));
+                        let mut st = Stroke::begin(&self.doc, self.doc.active, self.brush());
+                        st.clip = self.selection;
+                        self.stroke = Some(st);
                         self.smooth = Some(ctx.input(|i| i.pointer.press_origin()).unwrap_or(p));
                         self.remember_colour();
                     }
@@ -1150,10 +1523,10 @@ impl SketchApp {
                         let layer = self.doc.active;
                         if self.shape_fill && kind != Shape::Line {
                             let col = self.color;
-                            let u = raster::fill_shape(&mut self.doc, layer, kind, a, b, [col.r(), col.g(), col.b()], brush.opacity);
+                            let u = raster::fill_shape(&mut self.doc, layer, kind, a, b, [col.r(), col.g(), col.b()], brush.opacity, self.selection);
                             self.pixels(u);
                         } else {
-                            let u = raster::stroke_path(&mut self.doc, layer, brush, &raster::shape_points(kind, a, b));
+                            let u = raster::stroke_path(&mut self.doc, layer, brush, &raster::shape_points(kind, a, b), self.selection);
                             self.pixels(u);
                         }
                         self.remember_colour();
@@ -1179,9 +1552,58 @@ impl SketchApp {
                 painter.add(egui::Shape::line(pts, UiStroke::new(w, self.color)));
             }
         }
+        // the gradient being laid
+        if let (Some(a), Some(b)) = (self.grad_start, self.grad_end) {
+            let (sa, sb) = (self.to_screen(rect, a), self.to_screen(rect, b));
+            painter.line_segment([sa, sb], UiStroke::new(3.0, Color32::from_black_alpha(140)));
+            painter.line_segment([sa, sb], UiStroke::new(1.5, Color32::WHITE));
+            painter.circle(sa, 5.0, self.color, UiStroke::new(1.5, Color32::WHITE));
+            let end = if self.grad_fade { Color32::TRANSPARENT } else { self.secondary };
+            painter.circle(sb, 5.0, end, UiStroke::new(1.5, Color32::WHITE));
+        }
+        // the text being placed
+        self.text_preview(&ctx);
+        if let Some(d) = &self.text_dlg {
+            if let (Some(m), Some(tex)) = (&d.mask, &d.tex) {
+                let r = Rect::from_min_max(self.to_screen(rect, (m.x as f32, m.y as f32)), self.to_screen(rect, ((m.x + m.w as i64) as f32, (m.y + m.h as i64) as f32)));
+                painter.image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            }
+            let p = self.to_screen(rect, d.pos);
+            let h = d.size * self.zoom;
+            painter.line_segment([p, p + vec2(0.0, h)], UiStroke::new(1.5, self.color));
+            painter.rect_stroke(Rect::from_min_size(p - vec2(3.0, 3.0), vec2(6.0, 6.0)), 0, UiStroke::new(1.0, Color32::WHITE), egui::StrokeKind::Middle);
+        }
+        // the selection, and where the moved pixels are
+        let sel = self.moving.as_ref().filter(|_| self.selection.is_some()).map(|m| m.dst).or(self.selection);
+        if let Some(r) = sel.filter(|r| !r.is_empty()) {
+            let sr = Rect::from_min_max(self.to_screen(rect, (r.x0 as f32, r.y0 as f32)), self.to_screen(rect, (r.x1 as f32, r.y1 as f32)));
+            let pts = [sr.left_top(), sr.right_top(), sr.right_bottom(), sr.left_bottom(), sr.left_top()];
+            painter.add(egui::Shape::line(pts.to_vec(), UiStroke::new(1.0, Color32::WHITE)));
+            // marching ants
+            let phase = (ctx.input(|i| i.time) * 8.0) as f32 % 8.0;
+            for w in pts.windows(2) {
+                let (a, b) = (w[0], w[1]);
+                let len = (b - a).length();
+                let dir = (b - a) / len.max(1e-3);
+                let mut d = -phase;
+                while d < len {
+                    let s0 = d.max(0.0);
+                    let s1 = (d + 4.0).min(len);
+                    if s1 > s0 {
+                        painter.line_segment([a + dir * s0, a + dir * s1], UiStroke::new(1.0, Color32::BLACK));
+                    }
+                    d += 8.0;
+                }
+            }
+            ctx.request_repaint_after(std::time::Duration::from_millis(120));
+        }
         // the brush outline
         if let Some(hp) = hover_screen {
-            if self.tool.has_size() && !panning {
+            if self.tool == Tool::Move && !panning {
+                ctx.set_cursor_icon(egui::CursorIcon::Move);
+            } else if self.tool == Tool::Text && !panning {
+                ctx.set_cursor_icon(egui::CursorIcon::Text);
+            } else if self.tool.has_size() && !panning {
                 let r = (self.settings[&self.tool].size * self.zoom / 2.0).max(1.5);
                 painter.circle_stroke(hp, r, UiStroke::new(1.0, Color32::from_black_alpha(160)));
                 painter.circle_stroke(hp, r + 1.0, UiStroke::new(1.0, Color32::from_white_alpha(160)));
@@ -1192,10 +1614,28 @@ impl SketchApp {
                 ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
             }
         }
-        if self.stroke.is_some() {
+        if self.stroke.is_some() || self.moving.is_some() {
             ctx.request_repaint();
         }
         hover
+    }
+
+    /// Lay out the text being placed again when it, its font, size or colour changed.
+    fn text_preview(&mut self, ctx: &egui::Context) {
+        let color = self.color;
+        let Some(d) = self.text_dlg.as_mut() else { return };
+        let Some((_, font)) = self.fonts.get(d.font) else { return };
+        let key = format!("{}|{}|{}|{:?}|{:?}|{:?}", d.text, d.size, d.font, d.align, d.pos, color);
+        if key == d.key {
+            return;
+        }
+        d.key = key;
+        d.mask = text::layout(font, &d.text, d.size, d.pos, d.align, 1.0);
+        d.tex = d.mask.as_ref().map(|m| {
+            let px: Vec<Color32> = m.a.iter().map(|&a| Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), a)).collect();
+            let img = egui::ColorImage::new([m.w as usize, m.h as usize], px);
+            ctx.load_texture("text-preview", img, TextureOptions::LINEAR)
+        });
     }
 
     fn origin(&self, rect: Rect) -> Pos2 {
@@ -1302,6 +1742,67 @@ impl SketchApp {
                 self.size_dlg = Some(d);
             }
         }
+        if let Some(mut d) = self.text_dlg.take() {
+            let mut keep = true;
+            let mut place = false;
+            let mut load_font = false;
+            let mut open = true;
+            egui::Window::new(t("Text")).collapsible(false).resizable(false).open(&mut open).default_pos(ctx.content_rect().right_top() + vec2(-320.0, 80.0)).show(ctx, |ui| {
+                ui.set_width(280.0);
+                let r = ui.add(egui::TextEdit::multiline(&mut d.text).desired_rows(3).desired_width(f32::INFINITY).hint_text(t("Type the text here")));
+                if d.text.is_empty() && !r.has_focus() {
+                    r.request_focus();
+                }
+                ui.horizontal(|ui| {
+                    ui.label(t("Font"));
+                    egui::ComboBox::from_id_salt("font").selected_text(self.fonts.get(d.font).map_or("", |f| f.0.as_str())).width(150.0).show_ui(ui, |ui| {
+                        for (i, (name, _)) in self.fonts.iter().enumerate() {
+                            ui.selectable_value(&mut d.font, i, name.as_str());
+                        }
+                    });
+                    if ui.small_button(t("Load Font…")).clicked() {
+                        load_font = true;
+                    }
+                });
+                ui.add(egui::Slider::new(&mut d.size, 6.0..=600.0).logarithmic(true).suffix(" px").text(t("Size")));
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut d.align, text::Align::Left, t("Left"));
+                    ui.radio_value(&mut d.align, text::Align::Center, t("Centre"));
+                    ui.radio_value(&mut d.align, text::Align::Right, t("Right"));
+                });
+                ui.label(egui::RichText::new(t("Click or drag on the canvas to move it. The colour is the current colour.")).small().weak());
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if ui.add_enabled(!d.text.trim().is_empty(), egui::Button::new(t("Place"))).clicked() {
+                        place = true;
+                    }
+                    if ui.button(t("Cancel")).clicked() {
+                        keep = false;
+                    }
+                });
+            });
+            if load_font {
+                self.pick_font();
+            }
+            if ctx.input(|i| i.modifiers.command && i.key_pressed(Key::Enter)) && !d.text.trim().is_empty() {
+                place = true;
+            }
+            self.text_size = d.size;
+            self.text_font = d.font;
+            if place {
+                let col = self.color;
+                let op = 1.0;
+                let layer = self.doc.active;
+                let mask = self.fonts.get(d.font).and_then(|(_, f)| text::layout(f, &d.text, d.size, d.pos, d.align, 1.0));
+                if let Some(m) = mask {
+                    let u = text::paint(&mut self.doc, layer, &m, [col.r(), col.g(), col.b()], op, None);
+                    self.pixels(u);
+                    self.remember_colour();
+                }
+            } else if keep && open && !ctx.input(|i| i.key_pressed(Key::Escape)) {
+                self.text_dlg = Some(d);
+            }
+        }
         if self.about {
             let mut open = true;
             egui::Window::new(t("About CraftOffice Sketch")).collapsible(false).resizable(false).open(&mut open).show(ctx, |ui| {
@@ -1328,6 +1829,12 @@ impl SketchApp {
                     }
                     for (label, key) in [
                         ("Brush size", "[  ]"),
+                        ("Select All", "Ctrl+A"),
+                        ("Deselect", "Ctrl+D"),
+                        ("Copy", "Ctrl+C"),
+                        ("Cut", "Ctrl+X"),
+                        ("Paste as New Layer", "Ctrl+V"),
+                        ("Delete Selection", "Del"),
                         ("Swap colours", "X"),
                         ("Eyedropper", "Alt"),
                         ("Pan", "Space, middle button"),
@@ -1434,6 +1941,37 @@ fn tool_icon(p: &egui::Painter, r: Rect, tool: Tool, c: Color32) {
         p.add(egui::Shape::line(pts.iter().map(|&(x, y)| at(x, y)).collect(), s));
     };
     match tool {
+        Tool::Select => {
+            for (a, b) in [((0.1, 0.15), (0.9, 0.15)), ((0.9, 0.15), (0.9, 0.85)), ((0.9, 0.85), (0.1, 0.85)), ((0.1, 0.85), (0.1, 0.15))] {
+                // dashed
+                for k in 0..3 {
+                    let t0 = k as f32 / 3.0;
+                    let t1 = t0 + 0.2;
+                    line(&[(a.0 + (b.0 - a.0) * t0, a.1 + (b.1 - a.1) * t0), (a.0 + (b.0 - a.0) * t1, a.1 + (b.1 - a.1) * t1)]);
+                }
+            }
+        }
+        Tool::Move => {
+            line(&[(0.5, 0.05), (0.5, 0.95)]);
+            line(&[(0.05, 0.5), (0.95, 0.5)]);
+            line(&[(0.38, 0.17), (0.5, 0.05), (0.62, 0.17)]);
+            line(&[(0.38, 0.83), (0.5, 0.95), (0.62, 0.83)]);
+            line(&[(0.17, 0.38), (0.05, 0.5), (0.17, 0.62)]);
+            line(&[(0.83, 0.38), (0.95, 0.5), (0.83, 0.62)]);
+        }
+        Tool::Gradient => {
+            for k in 0..5 {
+                let x = 0.1 + k as f32 * 0.16;
+                let g = (60 + k * 45) as u8;
+                p.rect_filled(Rect::from_min_max(at(x, 0.2), at(x + 0.16, 0.8)), 0, Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), g));
+            }
+            p.rect_stroke(Rect::from_min_max(at(0.1, 0.2), at(0.9, 0.8)), 1, s, egui::StrokeKind::Middle);
+        }
+        Tool::Text => {
+            line(&[(0.15, 0.2), (0.85, 0.2)]);
+            line(&[(0.5, 0.2), (0.5, 0.88)]);
+            line(&[(0.35, 0.88), (0.65, 0.88)]);
+        }
         Tool::Pencil => {
             line(&[(0.15, 0.85), (0.25, 0.6), (0.75, 0.1), (0.9, 0.25), (0.4, 0.75), (0.15, 0.85)]);
             line(&[(0.25, 0.6), (0.4, 0.75)]);
@@ -1522,6 +2060,10 @@ impl eframe::App for SketchApp {
             }
         }
         self.shortcuts_input(&ctx);
+        self.clip_commands(&ctx);
+        if let Some(r) = self.selection {
+            self.selection = Some(r.intersect(self.doc.full())).filter(|r| !r.is_empty());
+        }
         self.sync_textures(&ctx);
         let title = format!("{}{} – CraftOffice Sketch", self.name, if self.dirty { " •" } else { "" });
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
