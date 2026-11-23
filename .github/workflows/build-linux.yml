@@ -13,6 +13,7 @@ on:
 
 env:
   LO_DICT_REF: c0865a85eb67dc377f2cf8e8fe2c4fa9e53f0dcb
+  LO_CORE_REF: d9b2d316ec4d546f831415aa75514fa237f1fda4
   CRAFT_FONTS_REF: b076417b5880bd4154bd22f00695b1d28c6bea83
   EGUI_REF: 6d518fc799681571963842f95b55a6b68431b15a
   I18N_REF: e56d26244bbac099bfd42e23fb12f78a4be418a7
@@ -103,10 +104,11 @@ jobs:
           path: out/
 
   dicts:
-    # The Hungarian and Romanian dictionaries (spelling, hyphenation, thesaurus) for the package's
+    # The Hungarian and Romanian dictionaries (spelling, hyphenation, thesaurus, AutoCorrect) for the package's
     # `szotarak` folder: the launcher hands them to Writer and the other apps. LibreOffice's, pinned.
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Dictionaries
         shell: bash
         run: |
@@ -117,6 +119,8 @@ jobs:
                    ro/ro_RO.aff ro/ro_RO.dic ro/hyph_ro_RO.dic ro/th_ro_RO_v2.dat; do
             curl -fsSL -o "out/szotarak/$(basename "$f")" "$B/$f" || echo "missing: $f"
           done
+          # AutoCorrect lists (LibreOffice's), which Writer also reads from here
+          python3 extra/acor_lists.py out/szotarak
           ls -la out/szotarak
       - uses: actions/upload-artifact@v4
         with:
