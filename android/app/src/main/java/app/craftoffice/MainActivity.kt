@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.os.Bundle
 import android.system.Os
 import android.util.Base64
@@ -39,6 +40,9 @@ class MainActivity : Activity() {
     private var pendingName = ""
     private var pendingMime = "application/octet-stream"
     private var pendingBytes: ByteArray? = null
+    private var site: File? = null
+    private var pageReady = false
+    private var openUri: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,6 +66,10 @@ class MainActivity : Activity() {
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 view.evaluateJavascript(SAVE_BRIDGE, null)
+                if (url.startsWith("http://127.0.0.1")) {
+                    pageReady = true
+                    deliverOpen()
+                }
             }
         }
         web.webChromeClient = object : WebChromeClient() {
@@ -110,8 +118,10 @@ class MainActivity : Activity() {
             "text/html",
             "utf-8",
         )
+        takeOpenIntent(intent)
         Thread {
             val site = unpackSite()
+            this.site = site
             Os.setenv("CRAFTOFFICE_SITE", site.absolutePath, true)
             val port = Engine.start(BuildConfig.APP_PORT)
             val url = "http://127.0.0.1:$port/"
@@ -136,6 +146,64 @@ class MainActivity : Activity() {
             }
         }.start()
     }
+
+    /** Opened again with a file (the app was already running): open that file too. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        takeOpenIntent(intent)
+        deliverOpen()
+    }
+
+    /** A file from another app: "Open with…" (VIEW) or shared to this app (SEND). */
+    private fun takeOpenIntent(intent: Intent?) {
+        val uri: Uri? = when (intent?.action) {
+            Intent.ACTION_VIEW -> intent.data
+            Intent.ACTION_SEND -> {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            }
+            else -> null
+        }
+        if (uri != null) openUri = uri
+    }
+
+    /**
+     * The file waiting to be opened, once the page is up: copied beside the page (the engine
+     * serves it) and dropped onto the app's window, as if dragged there, so the app opens it.
+     */
+    private fun deliverOpen() {
+        val uri = openUri ?: return
+        val site = site ?: return
+        if (!pageReady) return
+        openUri = null
+        Thread {
+            try {
+                var name = "file"
+                contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                    if (c.moveToFirst() && !c.isNull(0)) name = c.getString(0)
+                }
+                if (name == "file") uri.lastPathSegment?.substringAfterLast('/')?.let { if (it.isNotBlank()) name = it }
+                val safe = name.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), "_").take(150).ifBlank { "file" }
+                val dir = File(site, "_open")
+                dir.deleteRecursively()
+                val stamp = System.currentTimeMillis().toString()
+                val out = File(File(dir, stamp), safe)
+                out.parentFile?.mkdirs()
+                contentResolver.openInputStream(uri)?.use { input -> out.outputStream().use { input.copyTo(it, 1 shl 16) } }
+                    ?: throw IllegalStateException("cannot read")
+                val mime = contentResolver.getType(uri) ?: ""
+                val path = "/_open/" + stamp + "/" + Uri.encode(safe)
+                val js = OPEN_FILE.replace("%PATH%", jsString(path)).replace("%NAME%", jsString(name)).replace("%MIME%", jsString(mime))
+                runOnUiThread { web.evaluateJavascript(js, null) }
+            } catch (e: Exception) {
+                runOnUiThread { Toast.makeText(this, "✗ ${e.message}", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
+
+    private fun jsString(s: String): String =
+        "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "") + "\""
 
     /** The app's files (assets/site) unpacked once per version, so the engine can serve them. */
     private fun unpackSite(): File {
@@ -219,6 +287,39 @@ class MainActivity : Activity() {
     }
   });
   window.dispatchEvent(new Event("resize"));
+})();
+"""
+
+        /**
+         * Opens a file handed over by another app: once the app's window is drawn, the file is
+         * dropped onto it (the apps open dropped files, as on a desktop).
+         */
+        private const val OPEN_FILE = """
+(function () {
+  var path = %PATH%, name = %NAME%, mime = %MIME%, t0 = Date.now();
+  function visible(el) { return el && el.offsetParent !== null && getComputedStyle(el).display !== "none"; }
+  function ready() {
+    var c = document.querySelector("canvas");
+    if (!c || c.width === 0) return null;
+    var l = document.getElementById("loading") || document.getElementById("loader") || document.querySelector(".loading");
+    return visible(l) ? null : c;
+  }
+  function drop(c) {
+    fetch(path).then(function (r) { return r.blob(); }).then(function (b) {
+      var f = new File([b], name, { type: mime || b.type || "" });
+      var dt = new DataTransfer();
+      dt.items.add(f);
+      ["dragenter", "dragover", "drop"].forEach(function (t) {
+        var e = new DragEvent(t, { dataTransfer: dt, bubbles: true, cancelable: true });
+        c.dispatchEvent(e);
+      });
+    });
+  }
+  (function wait() {
+    var c = ready();
+    if (c) { setTimeout(function () { drop(c); }, 1500); return; }
+    if (Date.now() - t0 < 120000) setTimeout(wait, 400);
+  })();
 })();
 """
 
