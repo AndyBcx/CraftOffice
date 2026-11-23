@@ -169,8 +169,20 @@ pub struct Layer {
     pub visible: bool,
     pub opacity: f32,
     pub blend: Blend,
-    /// width × height × RGBA, straight alpha.
+    /// width × height × RGBA, straight alpha. While the mask is being painted (`on_mask`), the
+    /// mask is here instead, so every tool paints on it as on a picture.
     pub px: Vec<u8>,
+    /// The layer mask: a grey picture of the same size, white shows the layer, black hides it
+    /// (value = brightness × alpha). While `on_mask`, this holds the layer's colours.
+    pub mask: Option<Vec<u8>>,
+    pub on_mask: bool,
+}
+
+/// How much of a layer a mask pixel lets through (0..1).
+#[inline]
+pub fn mask_value(m: &[u8]) -> f32 {
+    let lum = 0.299 * m[0] as f32 + 0.587 * m[1] as f32 + 0.114 * m[2] as f32;
+    lum / 255.0 * (m[3] as f32 / 255.0)
 }
 
 impl Layer {
@@ -181,7 +193,85 @@ impl Layer {
                 p.copy_from_slice(&fill);
             }
         }
-        Layer { name, visible: true, opacity: 1.0, blend: Blend::Normal, px }
+        Layer { name, visible: true, opacity: 1.0, blend: Blend::Normal, px, mask: None, on_mask: false }
+    }
+
+    /// The layer's own colours (whichever buffer holds them).
+    pub fn colors(&self) -> &[u8] {
+        match (&self.mask, self.on_mask) {
+            (Some(m), true) => m,
+            _ => &self.px,
+        }
+    }
+
+    /// The mask, if the layer has one (whichever buffer holds it).
+    pub fn mask_px(&self) -> Option<&[u8]> {
+        match (&self.mask, self.on_mask) {
+            (Some(_), true) => Some(&self.px),
+            (Some(m), false) => Some(m),
+            (None, _) => None,
+        }
+    }
+
+    /// Switch between painting the layer and painting its mask.
+    pub fn swap_mask(&mut self) {
+        if let Some(m) = self.mask.as_mut() {
+            std::mem::swap(&mut self.px, m);
+            self.on_mask = !self.on_mask;
+        }
+    }
+
+    /// Back to painting the layer (colours in `px`).
+    pub fn leave_mask(&mut self) {
+        if self.on_mask {
+            self.swap_mask();
+        }
+    }
+
+    /// A new mask: white (all shown), or from a selection (0..255 per pixel).
+    pub fn add_mask(&mut self, sel: Option<&[u8]>) {
+        self.leave_mask();
+        let n = self.px.len() / 4;
+        let mut m = vec![255u8; n * 4];
+        if let Some(sel) = sel {
+            for (p, &v) in m.chunks_exact_mut(4).zip(sel) {
+                p[0] = v;
+                p[1] = v;
+                p[2] = v;
+            }
+        }
+        self.mask = Some(m);
+    }
+
+    /// The colours with the mask applied to their alpha.
+    pub fn baked(&self) -> Vec<u8> {
+        let mut out = self.colors().to_vec();
+        if let Some(m) = self.mask_px() {
+            for (p, mp) in out.chunks_exact_mut(4).zip(m.chunks_exact(4)) {
+                p[3] = (p[3] as f32 * mask_value(mp) + 0.5) as u8;
+            }
+        }
+        out
+    }
+
+    /// Put the mask into the layer's alpha and drop it.
+    pub fn apply_mask(&mut self) {
+        if self.mask.is_some() {
+            self.px = self.baked();
+            self.mask = None;
+            self.on_mask = false;
+        }
+    }
+
+    /// Drop the mask without using it.
+    pub fn delete_mask(&mut self) {
+        self.leave_mask();
+        self.mask = None;
+    }
+
+    /// The pixel buffers (colours and mask) for whole-picture changes such as rotating.
+    pub fn buffers_mut(&mut self) -> impl Iterator<Item = &mut Vec<u8>> {
+        std::iter::once(&mut self.px).chain(self.mask.as_mut())
     }
 }
 
@@ -227,8 +317,9 @@ impl Doc {
                 let i = ((y * self.w + x) * 4) as usize;
                 let mut acc = base;
                 for l in &layers {
-                    let p = &l.px[i..i + 4];
-                    blend_into(&mut acc, p, p[3] as f32 / 255.0 * l.opacity, l.blend);
+                    let p = &l.colors()[i..i + 4];
+                    let m = l.mask_px().map_or(1.0, |m| mask_value(&m[i..i + 4]));
+                    blend_into(&mut acc, p, p[3] as f32 / 255.0 * l.opacity * m, l.blend);
                 }
                 out.extend(acc.iter().map(|v| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8));
             }
@@ -872,7 +963,9 @@ pub fn crop_doc(doc: &mut Doc, r: IRect) {
         return;
     }
     for l in &mut doc.layers {
-        l.px = crop(&l.px, doc.w, r);
+        for b in l.buffers_mut() {
+            *b = crop(b, doc.w, r);
+        }
     }
     doc.w = r.width();
     doc.h = r.height();
@@ -1285,8 +1378,8 @@ pub enum Transform {
 
 pub fn transform(doc: &mut Doc, t: Transform) {
     let (w, h) = (doc.w as usize, doc.h as usize);
-    for l in &mut doc.layers {
-        let src = std::mem::take(&mut l.px);
+    for buf in doc.layers.iter_mut().flat_map(Layer::buffers_mut) {
+        let src = std::mem::take(buf);
         let mut dst = vec![0u8; src.len()];
         for y in 0..h {
             for x in 0..w {
@@ -1301,7 +1394,7 @@ pub fn transform(doc: &mut Doc, t: Transform) {
                 dst[b..b + 4].copy_from_slice(&src[a..a + 4]);
             }
         }
-        l.px = dst;
+        *buf = dst;
     }
     if matches!(t, Transform::RotCw | Transform::RotCcw) {
         std::mem::swap(&mut doc.w, &mut doc.h);
@@ -1314,7 +1407,11 @@ pub fn resize_canvas(doc: &mut Doc, nw: u32, nh: u32, anchor: (f32, f32)) {
     let ox = ((nw as i64 - ow) as f32 * anchor.0).round() as i64;
     let oy = ((nh as i64 - oh) as f32 * anchor.1).round() as i64;
     for l in &mut doc.layers {
-        let mut dst = vec![0u8; (nw * nh * 4) as usize];
+      // the mask (whichever buffer holds it) is white outside the old canvas: new space shows
+      let mask_slot = if l.on_mask { 0 } else { 1 };
+      for (slot, buf) in l.buffers_mut().enumerate() {
+        let fill = if slot == mask_slot { 255 } else { 0 };
+        let mut dst = vec![fill; (nw * nh * 4) as usize];
         for y in 0..oh {
             let ny = y + oy;
             if ny < 0 || ny >= nh as i64 {
@@ -1327,10 +1424,11 @@ pub fn resize_canvas(doc: &mut Doc, nw: u32, nh: u32, anchor: (f32, f32)) {
                 }
                 let a = ((y * ow + x) * 4) as usize;
                 let b = ((ny * nw as i64 + nx) * 4) as usize;
-                dst[b..b + 4].copy_from_slice(&l.px[a..a + 4]);
+                dst[b..b + 4].copy_from_slice(&buf[a..a + 4]);
             }
         }
-        l.px = dst;
+        *buf = dst;
+      }
     }
     doc.w = nw;
     doc.h = nh;
@@ -1341,7 +1439,9 @@ pub fn merge(lower: &mut Layer, upper: &Layer) {
     if !upper.visible {
         return;
     }
-    for (d, s) in lower.px.chunks_exact_mut(4).zip(upper.px.chunks_exact(4)) {
+    lower.leave_mask();
+    let upper_px = upper.baked();
+    for (d, s) in lower.px.chunks_exact_mut(4).zip(upper_px.chunks_exact(4)) {
         let sa = s[3] as f32 / 255.0 * upper.opacity;
         if sa <= 0.0 {
             continue;
@@ -1361,15 +1461,20 @@ pub enum Undo {
     Pixels { layer: usize, rect: IRect, before: Vec<u8>, after: Vec<u8> },
     /// Anything structural (layers, size): the whole document before and after.
     Doc { before: Box<Doc>, after: Box<Doc> },
+    /// Switching between painting a layer and painting its mask.
+    SwapMask { layer: usize },
 }
 
 impl Undo {
     pub fn bytes(&self) -> usize {
         match self {
             Undo::Pixels { before, after, .. } => before.len() + after.len(),
-            Undo::Doc { before, after } => {
-                before.layers.iter().map(|l| l.px.len()).sum::<usize>() + after.layers.iter().map(|l| l.px.len()).sum::<usize>()
-            }
+            Undo::Doc { before, after } => [before, after]
+                .iter()
+                .flat_map(|d| d.layers.iter())
+                .map(|l| l.px.len() + l.mask.as_ref().map_or(0, Vec::len))
+                .sum(),
+            Undo::SwapMask { .. } => 0,
         }
     }
 }
@@ -1429,6 +1534,12 @@ fn apply(doc: &mut Doc, u: &Undo, forward: bool) -> bool {
             *doc = if forward { (**after).clone() } else { (**before).clone() };
             true
         }
+        Undo::SwapMask { layer } => {
+            if let Some(l) = doc.layers.get_mut(*layer) {
+                l.swap_mask();
+            }
+            true
+        }
     }
 }
 
@@ -1486,6 +1597,31 @@ mod tests {
         e.size = 40.0;
         stroke_path(&mut d, 0, e, &[(15.0, 15.0)], None);
         assert_eq!(d.layers[0].px[inside + 3], 0);
+    }
+
+    #[test]
+    fn layer_mask() {
+        let mut d = Doc::new(4, 2, Some([255, 255, 255, 255]), "bg", "l");
+        for p in d.layers[1].px.chunks_exact_mut(4) {
+            p.copy_from_slice(&[255, 0, 0, 255]);
+        }
+        let mut sel = vec![255u8; 8];
+        sel[0] = 0;
+        d.layers[1].add_mask(Some(&sel));
+        assert_eq!(&d.flatten(None)[0..4], &[255, 255, 255, 255]);
+        assert_eq!(&d.flatten(None)[4..8], &[255, 0, 0, 255]);
+        // painting the mask: the picture is unchanged until the mask changes
+        d.layers[1].swap_mask();
+        assert_eq!(&d.flatten(None)[0..4], &[255, 255, 255, 255]);
+        d.layers[1].px[4..8].copy_from_slice(&[0, 0, 0, 255]);
+        assert_eq!(&d.flatten(None)[4..8], &[255, 255, 255, 255]);
+        // the mask follows the picture when it turns, and new canvas space shows the layer
+        transform(&mut d, Transform::RotCw);
+        resize_canvas(&mut d, 3, 5, (0.0, 0.0));
+        assert_eq!(d.layers[1].mask.as_ref().unwrap().len(), d.layers[1].px.len());
+        d.layers[1].apply_mask();
+        assert!(d.layers[1].mask.is_none() && !d.layers[1].on_mask);
+        assert_eq!(d.layers[1].px.len(), 3 * 5 * 4);
     }
 
     #[test]

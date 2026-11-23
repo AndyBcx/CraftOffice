@@ -408,6 +408,20 @@ impl SketchApp {
         self.rebuild = true;
     }
 
+    /// Paint a layer's mask (`true`) or its colours (`false`); one undo step.
+    fn set_mask_edit(&mut self, layer: usize, on: bool) {
+        let Some(l) = self.doc.layers.get(layer) else { return };
+        if l.mask.is_none() || l.on_mask == on {
+            return;
+        }
+        self.cancel_filter();
+        self.drop_moving();
+        self.cancel_stroke();
+        self.doc.layers[layer].swap_mask();
+        self.hist.push(Undo::SwapMask { layer });
+        self.rebuild = true;
+    }
+
     fn pixels(&mut self, u: Option<Undo>) {
         if let Some(u) = u {
             if let Undo::Pixels { rect, .. } = &u {
@@ -1265,6 +1279,33 @@ impl SketchApp {
             });
             close = true;
         }
+        ui.separator();
+        let has_mask = self.doc.layers[a].mask.is_some();
+        let on_mask = self.doc.layers[a].on_mask;
+        if row(ui, !has_mask, "Add Layer Mask", "◐") {
+            self.doc_op(|d| d.layers[a].add_mask(None));
+            self.set_mask_edit(a, true);
+            close = true;
+        }
+        if row(ui, !has_mask && (self.selection.is_some() || self.sel_mask.is_some()), "Layer Mask from Selection", "◐") {
+            self.drop_moving();
+            let sel = self.current_mask();
+            self.doc_op(|d| d.layers[a].add_mask(Some(&sel)));
+            close = true;
+        }
+        if has_mask && row(ui, true, if on_mask { "Edit Layer" } else { "Edit Layer Mask" }, "◐") {
+            self.set_mask_edit(a, !on_mask);
+            close = true;
+        }
+        if row(ui, has_mask, "Apply Layer Mask", "◐") {
+            self.doc_op(|d| d.layers[a].apply_mask());
+            close = true;
+        }
+        if row(ui, has_mask, "Delete Layer Mask", "◐") {
+            self.doc_op(|d| d.layers[a].delete_mask());
+            close = true;
+        }
+        ui.separator();
         if row(ui, a + 1 < n, "Move Up", "▲") {
             self.doc_op(|d| {
                 d.layers.swap(a, a + 1);
@@ -1454,15 +1495,27 @@ impl SketchApp {
                 self.dirty = true;
                 self.rebuild = true;
             }
+            if self.doc.layers[a].on_mask {
+                ui.label(egui::RichText::new(t("Painting the layer mask: black hides, white shows.")).small().color(Color32::from_rgb(0xE0, 0x9A, 0x2A)));
+            }
             let mut pick = None;
+            let mut mask_click = None;
             let mut toggle = None;
             let mut start_rename = None;
             for i in (0..self.doc.layers.len()).rev() {
                 let (visible, lname) = (self.doc.layers[i].visible, self.doc.layers[i].name.clone());
+                let (has_mask, on_mask) = (self.doc.layers[i].mask.is_some(), self.doc.layers[i].on_mask);
                 ui.horizontal(|ui| {
                     let mut v = visible;
                     if ui.checkbox(&mut v, "").on_hover_text(t("Visible")).changed() {
                         toggle = Some(i);
+                    }
+                    if has_mask {
+                        // the mask's chip: click to paint the mask, click again for the layer
+                        let r = ui.selectable_label(on_mask, "◐").on_hover_text(if on_mask { t("Edit Layer") } else { t("Edit Layer Mask") });
+                        if r.clicked() {
+                            mask_click = Some((i, !on_mask));
+                        }
                     }
                     if let Some((ri, text)) = self.rename.as_mut().filter(|(ri, _)| *ri == i) {
                         let r = ui.text_edit_singleline(text);
@@ -1496,7 +1549,19 @@ impl SketchApp {
             if let Some(i) = pick {
                 self.drop_moving();
                 self.cancel_stroke();
+                if i != self.doc.active {
+                    self.set_mask_edit(self.doc.active, false);
+                }
                 self.doc.active = i;
+            }
+            if let Some((i, on)) = mask_click {
+                self.drop_moving();
+                self.cancel_stroke();
+                if i != self.doc.active {
+                    self.set_mask_edit(self.doc.active, false);
+                    self.doc.active = i;
+                }
+                self.set_mask_edit(i, on);
             }
             if let Some(i) = start_rename {
                 self.rename = Some((i, self.doc.layers[i].name.clone()));

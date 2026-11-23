@@ -25,6 +25,9 @@ struct LayerHeader {
     #[serde(default)]
     blend: Blend,
     png: usize,
+    /// The layer mask's PNG, right after the layer's (bytes; absent: no mask).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mask_png: Option<usize>,
 }
 
 fn png(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
@@ -40,8 +43,13 @@ fn png(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
 
 pub fn save_project(doc: &Doc) -> Result<Vec<u8>, String> {
     let mut pngs = Vec::new();
+    let mut masks = Vec::new();
     for l in &doc.layers {
-        pngs.push(png(doc.w, doc.h, &l.px)?);
+        pngs.push(png(doc.w, doc.h, l.colors())?);
+        masks.push(match l.mask_px() {
+            Some(m) => Some(png(doc.w, doc.h, m)?),
+            None => None,
+        });
     }
     let header = Header {
         w: doc.w,
@@ -50,15 +58,25 @@ pub fn save_project(doc: &Doc) -> Result<Vec<u8>, String> {
         layers: doc
             .layers
             .iter()
-            .zip(&pngs)
-            .map(|(l, p)| LayerHeader { name: l.name.clone(), visible: l.visible, opacity: l.opacity, blend: l.blend, png: p.len() })
+            .zip(pngs.iter().zip(&masks))
+            .map(|(l, (p, m))| LayerHeader {
+                name: l.name.clone(),
+                visible: l.visible,
+                opacity: l.opacity,
+                blend: l.blend,
+                png: p.len(),
+                mask_png: m.as_ref().map(Vec::len),
+            })
             .collect(),
     };
     let mut out = MAGIC.to_vec();
     out.extend_from_slice(serde_json::to_string(&header).map_err(|e| e.to_string())?.as_bytes());
     out.push(b'\n');
-    for p in pngs {
+    for (p, m) in pngs.into_iter().zip(masks) {
         out.extend_from_slice(&p);
+        if let Some(m) = m {
+            out.extend_from_slice(&m);
+        }
     }
     Ok(out)
 }
@@ -82,8 +100,28 @@ pub fn load_project(bytes: &[u8]) -> Result<Doc, String> {
         if img.width() != header.w || img.height() != header.h {
             return Err("damaged file".into());
         }
-        layers.push(Layer { name: lh.name, visible: lh.visible, opacity: lh.opacity.clamp(0.0, 1.0), blend: lh.blend, px: img.into_raw() });
         at = end;
+        let mask = match lh.mask_png {
+            Some(n) => {
+                let end = at.checked_add(n).filter(|&e| e <= rest.len()).ok_or("damaged file")?;
+                let m = image::load_from_memory(&rest[at..end]).map_err(|e| e.to_string())?.to_rgba8();
+                if m.width() != header.w || m.height() != header.h {
+                    return Err("damaged file".into());
+                }
+                at = end;
+                Some(m.into_raw())
+            }
+            None => None,
+        };
+        layers.push(Layer {
+            name: lh.name,
+            visible: lh.visible,
+            opacity: lh.opacity.clamp(0.0, 1.0),
+            blend: lh.blend,
+            px: img.into_raw(),
+            mask,
+            on_mask: false,
+        });
     }
     let active = header.active.min(layers.len() - 1);
     Ok(Doc { w: header.w, h: header.h, layers, active })
@@ -196,9 +234,11 @@ pub fn export_psd(doc: &Doc) -> Vec<u8> {
         li.extend_from_slice(&luni);
     }
     for l in &doc.layers {
+        // a layer mask goes into the layer's transparency
+        let px = l.baked();
         for c in [3usize, 0, 1, 2] {
             be16(&mut li, 0); // raw
-            li.extend(l.px.chunks_exact(4).map(|p| p[c]));
+            li.extend(px.chunks_exact(4).map(|p| p[c]));
         }
     }
     if li.len() % 2 != 0 {
@@ -252,6 +292,16 @@ mod tests {
         assert_eq!((e.w, e.h, e.layers.len(), e.active), (8, 6, 2, 1));
         assert_eq!(e.layers[1].name, "Ink");
         assert_eq!(&e.layers[1].px[0..4], &[10, 20, 30, 200]);
+        // a layer mask is kept, also when saved while it is being painted
+        d.layers[1].add_mask(None);
+        d.layers[1].swap_mask();
+        d.layers[1].px[0..4].copy_from_slice(&[0, 0, 0, 255]);
+        let e = load_project(&save_project(&d).unwrap()).unwrap();
+        assert!(!e.layers[1].on_mask);
+        assert_eq!(&e.layers[1].px[0..4], &[10, 20, 30, 200]);
+        assert_eq!(&e.layers[1].mask.as_ref().unwrap()[0..4], &[0, 0, 0, 255]);
+        assert_eq!(e.layers[1].baked()[3], 0);
+        assert_eq!(e.layers[0].mask, None);
         assert!(!e.layers[0].visible);
         assert_eq!(e.layers[1].blend, Blend::Multiply);
         assert!(load_project(&bytes[..bytes.len() - 3]).is_err());
