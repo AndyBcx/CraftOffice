@@ -11,7 +11,7 @@ index e69de29..440a9dd 100644
 @@ -0,0 +1 @@
 +CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
 diff --git a/crates/ui-egui/src/home.rs b/crates/ui-egui/src/home.rs
-index db8965e..4afcd3b 100644
+index cbe05f9..55b6a7f 100644
 --- a/crates/ui-egui/src/home.rs
 +++ b/crates/ui-egui/src/home.rs
 @@ -180,6 +180,9 @@ pub fn modals(app: &mut CraftApp, ctx: &egui::Context) {
@@ -21,6 +21,6 @@ index db8965e..4afcd3b 100644
 +                    ui.add_space(6.0);
 +                    ui.label("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."); // CraftOffice
 +                    ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
-                     ui.add_space(12.0);
+                     ui.add_space(theme::space::MD);
                      if widgets::primary(ui, "Close").clicked() {
                          close = true;

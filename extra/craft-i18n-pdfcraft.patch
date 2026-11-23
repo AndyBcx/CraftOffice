@@ -1,12 +1,12 @@
 diff --git a/locales/hu/pdfcraft.tsv b/locales/hu/pdfcraft.tsv
-index 1aaf0a8..37cab76 100644
+index 618df5f..703138f 100644
 --- a/locales/hu/pdfcraft.tsv
 +++ b/locales/hu/pdfcraft.tsv
-@@ -3678,3 +3678,115 @@ document scrollbar width	Wide	Széles
- 	…or paste the raw text here; # headings, - bullets	…vagy illessze be ide a nyers szöveget; # címsorok, - felsorolások
- 	− Page {p}	− {p}. oldal
- 	−LOC	−LOC
-+# CraftOffice (AndyBcx): missing hu rows
+@@ -3681,3 +3681,336 @@ document scrollbar width	Wide	Széles
+ 	This document's script is asking	A dokumentum szkriptje kérdez
+ 	Document: {name}	Dokumentum: {name}
+ 	This request comes from the document, not PdfCraft. Only enter a password if you trust this document.	Ez a kérés a dokumentumtól származik, nem a PdfCrafttól. Csak akkor adjon meg jelszót, ha megbízik ebben a dokumentumban.
++# CraftOffice (AndyBcx): translations added for this edition
 +	1 line	1 sor
 +	A script edited here can be at most 256 KiB long; that change wasn't made.	Az itt szerkesztett szkript legfeljebb 256 KiB lehet; a módosítás nem történt meg.
 +	Accept or reject the OCR review of the other document before running OCR here	Előbb fogadd el vagy utasítsd el a másik dokumentum OCR-ellenőrzését, mielőtt itt OCR-t futtatsz
@@ -30,9 +30,7 @@ index 1aaf0a8..37cab76 100644
 +	Discard external cross-references	Külső kereszthivatkozások elvetése
 +	Dock navigation rail on Left	Navigációs sáv dokkolása balra
 +	Dock navigation rail on Right	Navigációs sáv dokkolása jobbra
-+	Document: {name}	Dokumentum: {name}
 +	Drag hotbar	Gyorssáv húzása
-+	Duplicate "{name}" onto:	„{name}” kettőzése ide:
 +	Edge shadow removal	Szélárnyék eltávolítása
 +	Edit attachment description	Melléklet leírásának szerkesztése
 +	Edit description	Leírás szerkesztése
@@ -55,7 +53,6 @@ index 1aaf0a8..37cab76 100644
 +	Invert middle-button drag	Középső gombos húzás megfordítása
 +	Its {standard} identification couldn't be kept, so the file no longer says it conforms to {standard}.	A(z) {standard} azonosítója nem maradhatott meg, így a fájl már nem jelzi, hogy megfelel a(z) {standard} szabványnak.
 +	Its {standard} identification was written back on its own.	A(z) {standard} azonosítója magától visszaíródott.
-+	JavaScript, e.g. getField("total").value	JavaScript, pl. getField("total").value
 +	Layout & Sizing	Elrendezés és méretezés
 +	Level {n}	{n}. szint
 +	Lightens shadows along the edges of the scan, such as a book's gutter or a copier's dark border	Világosítja a beolvasás széleinél lévő árnyékokat, például a könyv gerincénél vagy a fénymásoló sötét szegélyénél
@@ -80,7 +77,6 @@ index 1aaf0a8..37cab76 100644
 +	Re-reading the page…	Az oldal újraolvasása…
 +	Re-reading the region…	A terület újraolvasása…
 +	Reading the drawing for snapping…	A rajz beolvasása az illesztéshez…
-+	Remove "{name}" from this list? The file itself is not deleted.	Eltávolítod a(z) „{name}” elemet a listáról? Maga a fájl nem törlődik.
 +	Remove from hotbar	Eltávolítás a gyorssávról
 +	Remove scan speckle	Beolvasási pöttyök eltávolítása
 +	Remove this leaf tag from reading order and mark its direct content as an artifact	A címke eltávolítása az olvasási sorrendből, és közvetlen tartalmának megjelölése műtermékként
@@ -102,8 +98,6 @@ index 1aaf0a8..37cab76 100644
 +	The document's XMP metadata held the redacted text and was removed.	A dokumentum XMP-metaadatai tartalmazták a kitakart szöveget, ezért eltávolításra kerültek.
 +	The re-read was cancelled; the words are unchanged	Az újraolvasás megszakadt; a szavak változatlanok
 +	This document has no text to make bookmarks from.	Ebben a dokumentumban nincs szöveg, amelyből könyvjelzők készülhetnének.
-+	This document's script is asking	A dokumentum szkriptje kérdez
-+	This request comes from the document, not PdfCraft. Only enter a password if you trust this document.	Ez a kérés a dokumentumtól jön, nem a PdfCrafttól. Csak akkor adj meg jelszót, ha megbízol a dokumentumban.
 +	This script is too long to edit here ({kib} KiB); its start is shown. It is kept as it is.	Ez a szkript túl hosszú ahhoz, hogy itt szerkeszd ({kib} KiB); az eleje látható. Változatlanul megmarad.
 +	Toolbar size	Eszköztár mérete
 +	Unspecified	Nincs megadva
@@ -117,16 +111,243 @@ index 1aaf0a8..37cab76 100644
 +	{font}, {size} pt	{font}, {size} pt
 +	{list} and {last}	{list} és {last}
 +	{n} lines	{n} sor
-+	{verb} as "{name}"	{verb} mint „{name}”
++	3D model	3D-modell
++	A font isn't embedded	Egy betűtípus nincs beágyazva
++	A {} action isn't allowed	{} művelet nem engedélyezett
++	A {} annotation has additional actions	Egy {} megjegyzésnek további műveletei vannak
++	A {} annotation has no appearance stream	Egy {} megjegyzésnek nincs megjelenési adatfolyama
++	A {} annotation isn't set to print, or is hidden	Egy {} megjegyzés nincs nyomtatásra állítva, vagy rejtett
++	Accessibility Report	Akadálymentességi jelentés
++	Bleed	Kifutó
++	CRL Signing	Visszavonási lista aláírása
++	Certificate Signing	Tanúsítvány aláírása
++	Certificate authority	Hitelesítésszolgáltató
++	Change Author	Szerző módosítása
++	Change Keywords	Kulcsszavak módosítása
++	Change Subject	Tárgy módosítása
++	Change Title	Cím módosítása
++	Choose a digital ID.	Válassz digitális azonosítót.
++	Couldn't enhance the scanned pages	Nem sikerült feljavítani a beolvasott oldalakat
++	Create links	Hivatkozások létrehozása
++	Creator	Létrehozó
++	Crop image	Kép körülvágása
++	Cut and stack needs Two-sided: Off. Print single-sided sheets.	A Vágás és egymásra rakáshoz a Kétoldalas: Ki beállítás kell. Egyoldalas lapokat nyomtass.
++	Data Encipherment	Adattitkosítás
++	Decipher Only	Csak visszafejtés
++	Detailed Report	Részletes jelentés
++	DeviceCMYK is used, but the PDF/A output intent isn't a CMYK profile	DeviceCMYK van használatban, de a PDF/A kimeneti cél nem CMYK-profil
++	DeviceRGB is used, but the PDF/A output intent isn't an RGB profile	DeviceRGB van használatban, de a PDF/A kimeneti cél nem RGB-profil
++	Digital Signature	Digitális aláírás
++	Encipher Only	Csak titkosítás
++	End entity	Végfelhasználó
++	English	Angol
++	Enhancing the scanned pages was cancelled	A beolvasott oldalak feljavítása megszakítva
++	Enter a URL	Adj meg egy URL-t
++	Enter a name.	Adj meg egy nevet.
++	Enter a page number	Adj meg egy oldalszámot
++	Enter the field names	Add meg a mezőneveket
++	Filename	Fájlnév
++	Filters	Szűrők
++	Flags	Jelzők
++	Flatten Fill & Sign	Kitöltés és aláírás véglegesítése
++	Font (unnamed) on page {p} doesn't map its characters to Unicode	A {p}. oldalon egy (névtelen) betűtípus nem rendeli a karaktereit Unicode-hoz
++	Font {} on page {p} doesn't map its characters to Unicode	A(z) {} betűtípus a {p}. oldalon nem rendeli a karaktereit Unicode-hoz
++	Form field on page {p} isn't tagged	A {p}. oldalon egy űrlapmező nincs címkézve
++	Hebrew	Héber
++	H{n} follows an H{d}; headings should not skip levels	H{n} következik egy H{d} után; a címsorszintek nem ugorhatók át
++	Inserted text	Beszúrt szöveg
++	Key Agreement	Kulcsegyeztetés
++	Key Encipherment	Kulcstitkosítás
++	Look	Megjelenés
++	No document language is set	Nincs megadva a dokumentum nyelve
++	No page has text: the document appears to be images of pages	Egyik oldalon sincs szöveg: a dokumentum oldalképekből áll
++	Non-Repudiation	Letagadhatatlanság
++	Page templates	Oldalsablonok
++	Page {n}	{n}. oldal
++	Page {p} doesn't tab in structure order	A {p}. oldal tabulátorsorrendje nem a struktúra sorrendje
++	Page {p}: {n} untagged content item	{p}. oldal: {n} címkézetlen tartalomelem
++	Page {p}: {n} untagged content items	{p}. oldal: {n} címkézetlen tartalomelem
++	Page {} has additional actions	A(z) {}. oldalnak további műveletei vannak
++	PdfCraft can't check this signature yet: {}.	A PdfCraft még nem tudja ellenőrizni ezt az aláírást: {}.
++	Print pages	Oldalak nyomtatása
++	Producer	Előállító
++	Remove {standard} identification	{standard} azonosító eltávolítása
++	Rendering…	Megjelenítés…
++	Report created	A jelentés elkészült
++	Rev. {rev}: Certified by an unknown signer	{rev}. változat: ismeretlen aláíró hitelesítette
++	Rev. {rev}: Certified by {name}	{rev}. változat: hitelesítette: {name}
++	Rev. {rev}: Signed by an unknown signer	{rev}. változat: ismeretlen aláíró írta alá
++	Rev. {rev}: Signed by {name}	{rev}. változat: aláírta: {name}
++	Rotate view clockwise (⇧⌘+)	Nézet forgatása az óramutató irányába (⇧⌘+)
++	Rule Name	Szabály neve
++	Save as {level}	Mentés {level} formátumban
++	Save changes?	Mented a módosításokat?
++	Scanned pages are already being enhanced	A beolvasott oldalak feljavítása már folyamatban van
++	Select all	Összes kijelölése
++	Signature is invalid	Az aláírás érvénytelen
++	Signature is valid	Az aláírás érvényes
++	Signature validity is unknown	Az aláírás érvényessége ismeretlen
++	Signing time is from the clock on the signer's computer.	Az aláírás ideje az aláíró számítógépének órájából származik.
++	Still rendering — this page is unusually complex…	Még megjelenítés alatt — ez az oldal szokatlanul összetett…
++	The ECDSA signature is not in canonical DER (trailing bytes, padding or a missing sign byte); it was read anyway.	Az ECDSA-aláírás nem kanonikus DER (záró bájtok, kitöltés vagy hiányzó előjelbájt); ennek ellenére beolvastuk.
++	The ECDSA signature is the raw r and s values instead of a DER sequence; it was read anyway.	Az ECDSA-aláírás nyers r és s értékekből áll DER-sorozat helyett; ennek ellenére beolvastuk.
++	The RSA signature value does not have the length of the key's modulus (leading zero bytes dropped or added); it was read anyway.	Az RSA-aláírás értékének hossza eltér a kulcs modulusáétól (elhagyott vagy hozzáadott nulla bájtok); ennek ellenére beolvastuk.
++	The RSA signature's DigestInfo has no NULL parameter (older signers write it so); it was read anyway.	Az RSA-aláírás DigestInfo részében nincs NULL paraméter (régebbi aláírók így írják); ennek ellenére beolvastuk.
++	The certificate of {} does not allow this many CA certificates below it (path length), so it is not used to vouch for {}.	{} tanúsítványa nem enged ennyi alárendelt CA-tanúsítványt (útvonalhossz), ezért nem használható {} hitelesítésére.
++	The certificate of {} has critical extensions PdfCraft does not recognize, so it is not used to vouch for {}.	{} tanúsítványa a PdfCraft által nem ismert kritikus bővítményeket tartalmaz, ezért nem használható {} hitelesítésére.
++	The certificate of {} is not a CA certificate that may issue certificates, so it is not used to vouch for {}.	{} tanúsítványa nem tanúsítványkiadásra jogosult CA-tanúsítvány, ezért nem használható {} hitelesítésére.
++	The certificate of {} was not valid at the time of signing, so it is not used to vouch for {}.	{} tanúsítványa az aláírás idején nem volt érvényes, ezért nem használható {} hitelesítésére.
++	The checker found problems which may prevent the document from being fully accessible.	Az ellenőrző olyan problémákat talált, amelyek akadályozhatják a dokumentum teljes akadálymentességét.
++	The document has been altered or corrupted since the signature was applied.	A dokumentumot az aláírás óta módosították vagy megsérült.
++	The document has been altered or corrupted since the timestamp was applied.	A dokumentumot az időbélyeg óta módosították vagy megsérült.
++	The document has been altered since this signature was applied in ways it does not permit ({}).	A dokumentumot az aláírás óta olyan módon módosították, amelyet az nem enged ({}).
++	The document has been altered since this timestamp was applied in ways it does not permit ({}).	A dokumentumot az időbélyeg óta olyan módon módosították, amelyet az nem enged ({}).
++	The document has been modified since this signature was applied, but the changes are permitted ({}).	A dokumentumot az aláírás óta módosították, de a módosítások engedélyezettek ({}).
++	The document has been modified since this timestamp was applied, but the changes are permitted ({}).	A dokumentumot az időbélyeg óta módosították, de a módosítások engedélyezettek ({}).
++	The document has no tags (structure tree)	A dokumentumnak nincsenek címkéi (struktúrafa)
++	The document has no title	A dokumentumnak nincs címe
++	The document isn't marked as tagged (MarkInfo Marked)	A dokumentum nincs címkézettként megjelölve (MarkInfo Marked)
++	The document isn't tagged, so none of its content is	A dokumentum nincs címkézve, így a tartalma sem
++	The document's embedded revocation information shows that the signer's certificate has not been revoked.	A dokumentumba ágyazott visszavonási adatok szerint az aláíró tanúsítványát nem vonták vissza.
++	The embedded timestamp token is valid and its authority is trusted; trusted time is {}.	A beágyazott időbélyeg érvényes, és a kiadója megbízható; a megbízható idő: {}.
++	The font {} isn't embedded	A(z) {} betűtípus nincs beágyazva
++	The metadata doesn't identify the file as {}	A metaadatok nem azonosítják a fájlt {} formátumúként
++	The password must have at least 8 characters.	A jelszónak legalább 8 karakterből kell állnia.
++	The passwords do not match.	A jelszavak nem egyeznek.
++	The security settings don't allow screen readers to read the text	A biztonsági beállítások nem engedik, hogy a képernyőolvasók felolvassák a szöveget
++	The signature algorithm and the SignerInfo's digest algorithm name different hashes; the signature was made with the SignerInfo's.	Az aláírási algoritmus és a SignerInfo kivonatalgoritmusa különböző hasheket nevez meg; az aláírás a SignerInfo szerintivel készült.
++	The signature carries an unverified timestamp ({}): the timestamp authority is not in your list of trusted certificates, so the signing time claimed by the signer is used instead.	Az aláírás ellenőrizetlen időbélyeget tartalmaz ({}): az időbélyeg-szolgáltató nincs a megbízható tanúsítványaid között, ezért az aláíró által megadott aláírási időt használjuk.
++	The signature contents are not hexadecimal.	Az aláírás tartalma nem hexadecimális.
++	The signature could not be checked ({}).	Az aláírást nem sikerült ellenőrizni ({}).
++	The signature could not be read ({}).	Az aláírást nem sikerült beolvasni ({}).
++	The signature could not be verified ({}).	Az aláírást nem sikerült igazolni ({}).
++	The signature has no valid byte range.	Az aláírásnak nincs érvényes bájttartománya.
++	The signature includes an embedded timestamp.	Az aláírás beágyazott időbélyeget tartalmaz.
++	The signature is BER-encoded (indefinite lengths) rather than DER; it was read leniently.	Az aláírás BER-kódolású (határozatlan hosszakkal) DER helyett; engedékenyen beolvastuk.
++	The signature uses the legacy adbe.x509.rsa_sha1 format.	Az aláírás a régi adbe.x509.rsa_sha1 formátumot használja.
++	The signature value does not match the signer's certificate: the signature is corrupt.	Az aláírás értéke nem egyezik az aláíró tanúsítványával: az aláírás sérült.
++	The signature's byte range does not exclude exactly its contents.	Az aláírás bájttartománya nem pontosan a tartalmát hagyja ki.
++	The signature's byte range does not match the file.	Az aláírás bájttartománya nem egyezik a fájllal.
++	The signature's signed attributes have no content type, which CMS requires; it was read anyway.	Az aláírás aláírt attribútumaiban nincs tartalomtípus, amit a CMS megkövetel; ennek ellenére beolvastuk.
++	The signature's signed attributes have no message digest, so the signature does not cover the document.	Az aláírás aláírt attribútumaiban nincs üzenetkivonat, így az aláírás nem fedi le a dokumentumot.
++	The signature's signed attributes name a content type other than data, so it is not a signature of the document.	Az aláírás aláírt attribútumai nem data tartalomtípust adnak meg, így ez nem a dokumentum aláírása.
++	The signature's timestamp token could not be verified ({}).	Az aláírás időbélyeg-tokenjét nem sikerült igazolni ({}).
++	The signature's timestamp token does not cover the signature value.	Az aláírás időbélyeg-tokenje nem fedi le az aláírás értékét.
++	The signed content is a constructed (segmented) OCTET STRING, as BER allows; it was read anyway.	Az aláírt tartalom összetett (szegmentált) OCTET STRING, ahogy a BER megengedi; ennek ellenére beolvastuk.
++	The signer's certificate does not allow digital signatures (its key usage has neither digital signature nor non-repudiation).	Az aláíró tanúsítványa nem enged digitális aláírást (a kulcshasználata sem digitális aláírást, sem letagadhatatlanságot nem tartalmaz).
++	The signer's certificate has been revoked ({}).	Az aláíró tanúsítványát visszavonták ({}).
++	The signer's certificate has critical extensions PdfCraft does not recognize ({}).	Az aláíró tanúsítványa a PdfCraft által nem ismert kritikus bővítményeket tartalmaz ({}).
++	The signer's certificate is not in the signature.	Az aláíró tanúsítványa nincs benne az aláírásban.
++	The signer's certificate is not issued for signing documents (its extended key usage has no document-signing purpose).	Az aláíró tanúsítványát nem dokumentumaláírásra állították ki (a kiterjesztett kulcshasználatában nincs dokumentumaláírási cél).
++	The signer's certificate was not valid at the time of signing.	Az aláíró tanúsítványa az aláírás idején nem volt érvényes.
++	The signer's identity is unknown because it has not been included in your list of trusted certificates and none of its parent certificates are trusted certificates.	Az aláíró személyazonossága ismeretlen, mert nincs a megbízható tanúsítványaid között, és egyik szülőtanúsítványa sem megbízható.
++	The signer's identity is valid.	Az aláíró személyazonossága érvényes.
++	The timestamp authority's certificate is not issued for time stamping.	Az időbélyeg-szolgáltató tanúsítványát nem időbélyegzésre állították ki.
++	The timestamp authority's certificate was not valid at the time of timestamping.	Az időbélyeg-szolgáltató tanúsítványa az időbélyegzés idején nem volt érvényes.
++	The timestamp contents are not hexadecimal.	Az időbélyeg tartalma nem hexadecimális.
++	The timestamp has no valid byte range.	Az időbélyegnek nincs érvényes bájttartománya.
++	The timestamp token could not be read ({}).	Az időbélyeg-tokent nem sikerült beolvasni ({}).
++	The timestamp token is valid and its authority is trusted.	Az időbélyeg-token érvényes, és a kiadója megbízható.
++	The timestamp token is valid, but the timestamp authority is not in your list of trusted certificates.	Az időbélyeg-token érvényes, de az időbélyeg-szolgáltató nincs a megbízható tanúsítványaid között.
++	The timestamp's byte range does not exclude exactly its contents.	Az időbélyeg bájttartománya nem pontosan a tartalmát hagyja ki.
++	The timestamp's byte range does not match the file.	Az időbélyeg bájttartománya nem egyezik a fájllal.
++	The window shows the file name, not the title (Initial View > Show)	Az ablak a fájlnevet mutatja, nem a címet (Kezdő nézet > Megjelenítés)
++	There is no folder to save the digital ID in.	Nincs mappa a digitális azonosító mentéséhez.
++	This document has not been modified since this signature was applied.	A dokumentumot nem módosították az aláírás óta.
++	This document has not been modified since this timestamp was applied.	A dokumentumot nem módosították az időbélyeg óta.
++	This form has too many fields, or a field name too long, for PdfCraft to read them all. Any signature among the rest is not listed, so the document is treated as signed.	Ennek az űrlapnak túl sok mezője vagy túl hosszú mezőneve van ahhoz, hogy a PdfCraft mindet beolvassa. A többi közötti aláírás nem jelenik meg, ezért a dokumentumot aláírtként kezeljük.
++	This signature uses RIPEMD-160, a legacy 160-bit hash algorithm that is no longer recommended for signatures. It still validates, but it should not be relied on.	Ez az aláírás a RIPEMD-160-at használja, egy régi, 160 bites hashalgoritmust, amely aláírásokhoz már nem ajánlott. Érvényesnek számít, de nem érdemes rá hagyatkozni.
++	This signature uses SHA-1, a weak hash algorithm: collisions in it have been demonstrated. It still validates because many documents signed years ago use it, but it should not be relied on.	Ez az aláírás a gyenge SHA-1 hashalgoritmust használja: ütközéseket már bizonyítottak benne. Érvényesnek számít, mert sok évekkel ezelőtt aláírt dokumentum használja, de nem érdemes rá hagyatkozni.
++	This signature uses an RSA key shorter than 2048 bits, which is no longer considered strong enough for signatures. It still validates, but it should not be relied on.	Ez az aláírás 2048 bitesnél rövidebb RSA-kulcsot használ, ami aláírásokhoz már nem számít elég erősnek. Érvényesnek számít, de nem érdemes rá hagyatkozni.
++	Unsigned signature field	Aláíratlan aláírásmező
++	Unsigned signature field: {name}	Aláíratlan aláírásmező: {name}
++	Vertices	Csúcspontok
++	Zoom in / out (also pinch or ⌘-scroll)	Nagyítás / kicsinyítés (csippentéssel vagy ⌘-görgetéssel is)
++	a table has 1 to {max} columns	egy táblázatnak 1–{max} oszlopa lehet
++	a table has 1 to {max} rows	egy táblázatnak 1–{max} sora lehet
++	alternate text hides an annotation inside it	a helyettesítő szöveg elrejt egy benne lévő megjegyzést
++	alternate text on an element with no page content	helyettesítő szöveg egy oldaltartalom nélküli elemen
++	comments	megjegyzések
++	document security store	dokumentumbiztonsági tár
++	document structure	dokumentumstruktúra
++	form fill	űrlapkitöltés
++	its alternate text is inside another element's and will never be read	a helyettesítő szövege egy másik elemén belül van, így soha nem lesz felolvasva
++	links	hivatkozások
++	metadata	metaadatok
++	no alternate text	nincs helyettesítő szöveg
++	no header cells (TH)	nincsenek fejléccellák (TH)
++	no summary	nincs összefoglaló
++	not in a TR	nincs TR-ben
++	not in a Table, THead, TBody or TFoot	nincs Table, THead, TBody vagy TFoot elemben
++	not in an L (list)	nincs L (lista) elemben
++	not in an LI (list item)	nincs LI (listaelem) elemben
++	of	/
++	other changes	egyéb módosítások
++	page content	oldaltartalom
++	page {n} is out of range (1–{count})	a(z) {n}. oldal kívül esik a tartományon (1–{count})
++	pages added or removed	oldalak hozzáadva vagy eltávolítva
++	rows have between {min} and {max} columns	a sorokban {min} és {max} közötti számú oszlop van
++	the area, the spacing and the column widths must be numbers, the spacing 0 or more and each width more than 0	a terület, a térköz és az oszlopszélességek számok legyenek, a térköz 0 vagy több, minden szélesség 0-nál nagyobb
++	the first heading is an H{n}; headings should not skip levels	az első címsor H{n}; a címsorszintek nem ugorhatók át
++	the first row number can be at most {max}	az első sor száma legfeljebb {max} lehet
++	the signed version could not be read	az aláírt változatot nem sikerült beolvasni
++	thick	vastag
++	{n} pages and no bookmarks	{n} oldal, könyvjelzők nélkül
++	{page} is not a page number or label	{page} nem oldalszám vagy oldalcímke
++	{ty} element on page {p}: {what}	{ty} elem a {p}. oldalon: {what}
++	{ty} element: {what}	{ty} elem: {what}
++	{who}, certificate issued by an unknown issuer.	{who}, a tanúsítvány kiadója ismeretlen.
++	{who}, certificate issued by {issuer}.	{who}, a tanúsítványt kiadta: {issuer}.
++	{} annotation on page {p} isn't tagged	{} megjegyzés a {p}. oldalon nincs címkézve
++	{} annotations aren't allowed	{} megjegyzések nem engedélyezettek
++	… and {n} more	… és még {n}
++calendar date	April	április
++calendar date	August	augusztus
++calendar date	December	december
++calendar date	February	február
++calendar date	January	január
++calendar date	July	július
++calendar date	June	június
++calendar date	March	március
++calendar date	May	május
++calendar date	November	november
++calendar date	October	október
++calendar date	September	szeptember
++calendar weekday	Fr	P
++calendar weekday	Mo	H
++calendar weekday	Sa	Szo
++calendar weekday	Su	V
++calendar weekday	Th	Cs
++calendar weekday	Tu	K
++calendar weekday	We	Sze
++certificate	Basic constraints	Alapvető korlátozások
++certificate	Intended usage	Rendeltetés
++certificate	Issued by	Kiállító
++certificate	Issued to	Kiállítva neki
++certificate	Issuer	Kiállító
++certificate	Key usage	Kulcshasználat
++certificate	Public key	Nyilvános kulcs
++certificate	SHA-1 digest	SHA-1 kivonat
++certificate	SHA-256 digest	SHA-256 kivonat
++certificate	Self-signed	Önaláírt
++certificate	Serial number	Sorozatszám
++certificate	Subject	Tulajdonos
++certificate	Valid from	Érvényesség kezdete
++certificate	Valid to	Érvényesség vége
++certificate	Validity ends	Érvényesség vége
++certificate	Validity starts	Érvényesség kezdete
++certificate	Version	Verzió
++review-suggestion	Replace text	Szöveg cseréje
++review-suggestion	Replacement text	Csereszöveg
 diff --git a/locales/ro/pdfcraft.tsv b/locales/ro/pdfcraft.tsv
-index 85faf68..3722607 100644
+index 0342973..4b6b61b 100644
 --- a/locales/ro/pdfcraft.tsv
 +++ b/locales/ro/pdfcraft.tsv
-@@ -4045,3 +4045,198 @@ calendar weekday	We	Mi
- 	− Page {p}	− Pagina {p}
- 	−Bin	−Bin
+@@ -4047,3 +4047,225 @@ calendar weekday	We	Mi
  	−LOC	−LOC
-+# CraftOffice (AndyBcx): missing ro rows
+ 	This document's script is asking	Scriptul acestui document întreabă
+ 	This request comes from the document, not PdfCraft. Only enter a password if you trust this document.	Această solicitare vine de la document, nu de la PdfCraft. Introduceți o parolă doar dacă aveți încredere în acest document.
++# CraftOffice (AndyBcx): translations added for this edition
 +	+ Dictionary	+ Dicționar
 +	1 line	1 linie
 +	; cancelled — {n} files were not run	; anulat — {n} fișiere nu au fost procesate
@@ -175,7 +396,6 @@ index 85faf68..3722607 100644
 +	Dock navigation rail on Right	Andocare bară de navigare la dreapta
 +	Downloading the text recognition models…	Se descarcă modelele de recunoaștere a textului…
 +	Drag hotbar	Tragere bară rapidă
-+	Duplicate "{name}" onto:	Duplicare „{name}” pe:
 +	ENGINE · STRATEGY	MOTOR · STRATEGIE
 +	Edge shadow removal	Eliminare umbre de margine
 +	Edit attachment description	Editare descriere atașament
@@ -205,7 +425,6 @@ index 85faf68..3722607 100644
 +	Invert middle-button drag	Inversare tragere cu butonul din mijloc
 +	Its {standard} identification couldn't be kept, so the file no longer says it conforms to {standard}.	Identificarea {standard} nu a putut fi păstrată, deci fișierul nu mai declară conformitatea cu {standard}.
 +	Its {standard} identification was written back on its own.	Identificarea {standard} a fost rescrisă automat.
-+	JavaScript, e.g. getField("total").value	JavaScript, de ex. getField("total").value
 +	LOW (< 70%)	SCĂZUT (< 70%)
 +	LOW-CONFIDENCE WORDS	CUVINTE CU ÎNCREDERE SCĂZUTĂ
 +	Layout & Sizing	Aspect și dimensionare
@@ -250,7 +469,6 @@ index 85faf68..3722607 100644
 +	Recognized text applied ({n} words, one undoable step)	Text recunoscut aplicat ({n} cuvinte, un singur pas anulabil)
 +	Reject	Respingere
 +	Reject entire page	Respingere pagină întreagă
-+	Remove "{name}" from this list? The file itself is not deleted.	Eliminați „{name}” din această listă? Fișierul în sine nu este șters.
 +	Remove from hotbar	Eliminare din bara rapidă
 +	Remove scan speckle	Eliminare puncte de scanare
 +	Removes isolated dark specks such as dust and scanner noise. The only filter black and white scans take.	Elimină punctele întunecate izolate, cum ar fi praful și zgomotul scanerului. Singurul filtru pentru scanările alb-negru.
@@ -290,8 +508,6 @@ index 85faf68..3722607 100644
 +	The selected word is gone; choose another	Cuvântul selectat nu mai există; alegeți altul
 +	The tesseract program, run as an external process	Programul tesseract, rulat ca proces extern
 +	This document has no text to make bookmarks from.	Acest document nu are text din care să se creeze marcaje.
-+	This document's script is asking	Scriptul acestui document întreabă
-+	This request comes from the document, not PdfCraft. Only enter a password if you trust this document.	Această cerere vine de la document, nu de la PdfCraft. Introduceți o parolă doar dacă aveți încredere în document.
 +	This script is too long to edit here ({kib} KiB); its start is shown. It is kept as it is.	Acest script este prea lung pentru a fi editat aici ({kib} KiB); este afișat începutul. Rămâne neschimbat.
 +	Toolbar size	Dimensiune bară de instrumente
 +	Turns pages scanned sideways or upside down upright before reading	Întoarce în poziție verticală paginile scanate lateral sau cu susul în jos înainte de citire
@@ -320,4 +536,36 @@ index 85faf68..3722607 100644
 +	{name}: {n} low-confidence word(s) on pages {pages}	{name}: {n} cuvinte cu încredere scăzută pe paginile {pages}
 +	{n} lines	{n} linii
 +	{n} word(s) to review	{n} cuvinte de revizuit
-+	{verb} as "{name}"	{verb} ca „{name}”
++	3D model	Model 3D
++	Couldn't enhance the scanned pages	Paginile scanate nu au putut fi îmbunătățite
++	Enhancing the scanned pages was cancelled	Îmbunătățirea paginilor scanate a fost anulată
++	Filters	Filtre
++	Hebrew	Ebraică
++	Keep	Păstrare
++	Larger text	Text mai mare
++	Legal	Legal
++	Letter	Letter
++	Limits	Limite
++	Look	Aspect
++	OCR results rejected.	Rezultatele OCR au fost respinse.
++	Page templates	Șabloane de pagină
++	Paper size	Dimensiune hârtie
++	Pause	Pauză
++	Print pages	Imprimare pagini
++	Rating	Evaluare
++	Repeat	Repetare
++	Resume	Reluare
++	Scanned pages are already being enhanced	Paginile scanate sunt deja în curs de îmbunătățire
++	Send	Trimitere
++	System default	Implicit sistem
++	That is the source file; choose another destination	Acesta este fișierul sursă; alegeți altă destinație
++	The page's words were cleared (undo in the panel)	Cuvintele paginii au fost șterse (anulați din panou)
++	US Letter	US Letter
++	Vertices	Vârfuri
++	XMP metadata	Metadate XMP
++	still checking whether the tesseract program can run; try again in a moment	încă se verifică dacă programul tesseract poate rula; încercați din nou în curând
++	the tesseract engine is not available in the web build	motorul tesseract nu este disponibil în versiunea web
++	the tesseract program was not found (install it, or add it to the PATH)	programul tesseract nu a fost găsit (instalați-l sau adăugați-l în PATH)
++	thick	gros
++document scrollbar width	Standard	Standard
++document scrollbar width	Wide	Lată
