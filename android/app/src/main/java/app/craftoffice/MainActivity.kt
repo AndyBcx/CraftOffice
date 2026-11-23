@@ -1,8 +1,16 @@
 package app.craftoffice
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.content.ContentValues
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.content.Intent
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
 import android.content.res.Configuration
+import android.graphics.drawable.Icon
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.os.Bundle
@@ -18,6 +26,8 @@ import android.widget.Toast
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** The engine library (Rust): a local web server for this app's files. */
 object Engine {
@@ -81,18 +91,31 @@ class MainActivity : Activity() {
             ): Boolean {
                 chooser?.onReceiveValue(null)
                 chooser = callback
-                val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "*/*"
-                    if (params.mode == FileChooserParams.MODE_OPEN_MULTIPLE) putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                }
-                return try {
-                    startActivityForResult(intent, REQ_OPEN)
-                    true
-                } catch (e: Exception) {
-                    chooser = null
-                    false
-                }
+                val multi = params.mode == FileChooserParams.MODE_OPEN_MULTIPLE
+                // the recent files first, if there are any; otherwise straight to the system picker
+                val recent = recents().filter { (u, _) -> stillReadable(Uri.parse(u)) }
+                if (recent.isEmpty()) return browse(multi)
+                val labels = recent.map { it.second }.toTypedArray()
+                var picked = false
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle(tr("Legutóbbi fájlok", "Fișiere recente", "Recent files"))
+                    .setItems(labels) { _, i ->
+                        picked = true
+                        val u = Uri.parse(recent[i].first)
+                        addRecent(u, recent[i].second)
+                        chooser?.onReceiveValue(arrayOf(u))
+                        chooser = null
+                    }
+                    .setPositiveButton(tr("Tallózás…", "Răsfoire…", "Browse…")) { _, _ ->
+                        picked = true
+                        if (!browse(multi)) { chooser?.onReceiveValue(null); chooser = null }
+                    }
+                    .setNegativeButton(tr("Mégse", "Anulare", "Cancel"), null)
+                    .setOnDismissListener {
+                        if (!picked) { chooser?.onReceiveValue(null); chooser = null }
+                    }
+                    .show()
+                return true
             }
         }
         // Saving: the page hands the finished file over; the system asks where it should go.
@@ -103,12 +126,21 @@ class MainActivity : Activity() {
                 pendingMime = if (mime.isBlank()) "application/octet-stream" else mime
                 pendingBytes = Base64.decode(base64, Base64.DEFAULT)
                 runOnUiThread {
-                    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type = pendingMime
-                        putExtra(Intent.EXTRA_TITLE, pendingName)
+                    if (Build.VERSION.SDK_INT < 29) {
+                        saveAs()
+                        return@runOnUiThread
                     }
-                    startActivityForResult(intent, REQ_SAVE)
+                    // the phone's Downloads folder in one tap, or anywhere else through the system
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle(pendingName)
+                        .setItems(
+                            arrayOf(
+                                tr("Mentés a Letöltések mappába", "Salvare în Descărcări", "Save to Downloads") + " (Download/CraftOffice)",
+                                tr("Mentés máshová…", "Salvare în altă parte…", "Save elsewhere…"),
+                            ),
+                        ) { _, i -> if (i == 0) saveToDownloads() else saveAs() }
+                        .setNegativeButton(tr("Mégse", "Anulare", "Cancel")) { _, _ -> pendingBytes = null }
+                        .show()
                 }
             }
         }, "CraftOfficeAndroid")
@@ -193,13 +225,165 @@ class MainActivity : Activity() {
                 contentResolver.openInputStream(uri)?.use { input -> out.outputStream().use { input.copyTo(it, 1 shl 16) } }
                     ?: throw IllegalStateException("cannot read")
                 val mime = contentResolver.getType(uri) ?: ""
+                if (keep(uri, write = false)) addRecent(uri, name)
                 val path = "/_open/" + stamp + "/" + Uri.encode(safe)
                 val js = OPEN_FILE.replace("%PATH%", jsString(path)).replace("%NAME%", jsString(name)).replace("%MIME%", jsString(mime))
                 runOnUiThread { web.evaluateJavascript(js, null) }
             } catch (e: Exception) {
+                removeRecent(uri)
                 runOnUiThread { Toast.makeText(this, "✗ ${e.message}", Toast.LENGTH_LONG).show() }
             }
         }.start()
+    }
+
+    private fun tr(hu: String, ro: String, en: String) = when (java.util.Locale.getDefault().language) {
+        "hu" -> hu
+        "ro" -> ro
+        else -> en
+    }
+
+    private fun browse(multi: Boolean): Boolean {
+        // OPEN_DOCUMENT (not GET_CONTENT): the file can be kept among the recent ones
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            if (multi) putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        }
+        return try {
+            startActivityForResult(intent, REQ_OPEN)
+            true
+        } catch (e: Exception) {
+            chooser = null
+            false
+        }
+    }
+
+    private fun stillReadable(uri: Uri): Boolean =
+        contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
+
+    /** The system's save dialog, starting where the last file went. */
+    private fun saveAs() {
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = pendingMime
+            putExtra(Intent.EXTRA_TITLE, pendingName)
+            prefs().getString(KEY_LAST_SAVE, null)?.let { putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, Uri.parse(it)) }
+        }
+        try {
+            startActivityForResult(intent, REQ_SAVE)
+        } catch (e: Exception) {
+            Toast.makeText(this, "✗ ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Straight into Download/CraftOffice (Android 10+, no permission needed). */
+    private fun saveToDownloads() {
+        val bytes = pendingBytes ?: return
+        val name = pendingName
+        val mime = pendingMime
+        pendingBytes = null
+        Thread {
+            try {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/CraftOffice")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IllegalStateException("MediaStore")
+                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                values.clear()
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                contentResolver.update(uri, values, null, null)
+                // the system may have renamed it ("name (1).ext") if one existed already
+                val saved = displayName(uri)
+                runOnUiThread {
+                    Toast.makeText(this, "✓ Download/CraftOffice/$saved", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                runOnUiThread { Toast.makeText(this, "✗ ${e.message}", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
+
+    // ---- Recent files: kept with lasting access, shown when the app's icon is held down ----
+
+    private fun prefs() = getSharedPreferences("craftoffice", MODE_PRIVATE)
+
+    /** Keep lasting access to a file; whether the app has it now. */
+    private fun keep(uri: Uri, write: Boolean): Boolean {
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or (if (write) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)
+        try {
+            contentResolver.takePersistableUriPermission(uri, flags)
+        } catch (e: Exception) {
+            // a file shared without lasting access
+        }
+        return contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
+    }
+
+    private fun displayName(uri: Uri): String {
+        try {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst() && !c.isNull(0)) return c.getString(0)
+            }
+        } catch (e: Exception) {
+        }
+        return uri.lastPathSegment?.substringAfterLast('/') ?: "file"
+    }
+
+    private fun recents(): MutableList<Pair<String, String>> {
+        val out = mutableListOf<Pair<String, String>>()
+        try {
+            val a = JSONArray(prefs().getString(KEY_RECENT, "[]"))
+            for (i in 0 until a.length()) {
+                val o = a.getJSONObject(i)
+                out.add(o.getString("uri") to o.getString("name"))
+            }
+        } catch (e: Exception) {
+        }
+        return out
+    }
+
+    private fun saveRecents(list: List<Pair<String, String>>) {
+        val a = JSONArray()
+        for ((u, n) in list.take(MAX_RECENT)) a.put(JSONObject().put("uri", u).put("name", n))
+        prefs().edit().putString(KEY_RECENT, a.toString()).apply()
+        updateShortcuts(list)
+    }
+
+    private fun addRecent(uri: Uri, name: String) {
+        val list = recents()
+        list.removeAll { it.first == uri.toString() }
+        list.add(0, uri.toString() to name)
+        saveRecents(list)
+    }
+
+    private fun removeRecent(uri: Uri) {
+        val list = recents()
+        if (list.removeAll { it.first == uri.toString() }) saveRecents(list)
+    }
+
+    /** The last files as shortcuts of the app's icon (hold the icon down to see them). */
+    private fun updateShortcuts(list: List<Pair<String, String>>) {
+        try {
+            val sm = getSystemService(ShortcutManager::class.java) ?: return
+            val max = minOf(sm.maxShortcutCountPerActivity, 4)
+            val shortcuts = list.take(max).mapIndexed { i, (u, n) ->
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(u), this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                ShortcutInfo.Builder(this, "recent$i")
+                    .setShortLabel(n.take(24).ifBlank { "file" })
+                    .setLongLabel(n.take(60).ifBlank { "file" })
+                    .setIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
+                    .setIntent(intent)
+                    .setRank(i)
+                    .build()
+            }
+            sm.dynamicShortcuts = shortcuts
+        } catch (e: Exception) {
+            // shortcuts are a convenience only
+        }
     }
 
     private fun jsString(s: String): String =
@@ -241,6 +425,12 @@ class MainActivity : Activity() {
                 }
                 chooser?.onReceiveValue(result)
                 chooser = null
+                // files opened from the picker become recent ones
+                if (resultCode == RESULT_OK && result != null) {
+                    Thread {
+                        for (u in result) if (keep(u, write = false)) addRecent(u, displayName(u))
+                    }.start()
+                }
             }
             REQ_SAVE -> {
                 val uri = data?.data
@@ -250,6 +440,8 @@ class MainActivity : Activity() {
                     try {
                         contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
                         Toast.makeText(this, "✓ $pendingName", Toast.LENGTH_SHORT).show()
+                        prefs().edit().putString(KEY_LAST_SAVE, uri.toString()).apply()
+                        if (keep(uri, write = true)) addRecent(uri, displayName(uri))
                     } catch (e: Exception) {
                         Toast.makeText(this, "✗ $pendingName: ${e.message}", Toast.LENGTH_LONG).show()
                     }
@@ -275,6 +467,9 @@ class MainActivity : Activity() {
     companion object {
         private const val REQ_OPEN = 1
         private const val REQ_SAVE = 2
+        private const val KEY_RECENT = "recent"
+        private const val KEY_LAST_SAVE = "lastSave"
+        private const val MAX_RECENT = 12
 
         /** The page's new size after the screen turned: the canvas follows the window. */
         private const val RESIZE = """
