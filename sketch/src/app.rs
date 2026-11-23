@@ -2135,7 +2135,7 @@ impl SketchApp {
             let mut open = true;
             egui::Window::new(t("About CraftOffice Sketch")).collapsible(false).resizable(false).open(&mut open).show(ctx, |ui| {
                 ui.heading("CraftOffice Sketch");
-                ui.label(format!("{} {}", t("Version"), env!("CARGO_PKG_VERSION")));
+                ui.label(format!("{} {} · CraftOffice {}", t("Version"), env!("CARGO_PKG_VERSION"), include_str!("../../VERSION").trim()));
                 ui.label(t("Drawing and sketching with layers, brushes and shapes."));
                 ui.add_space(6.0);
                 ui.label(t("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."));
