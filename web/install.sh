@@ -13,6 +13,18 @@ rm -rf /opt/craftoffice-web.old
 mv /opt/craftoffice-web /opt/craftoffice-web.old
 mv /opt/craftoffice-web.new /opt/craftoffice-web
 rm -rf /opt/craftoffice-web.old
+# Google Drive saving (optional): a Google OAuth client ID ("Web application") whose authorized
+# redirect URI is https://<your address>/drive-auth.html, e.g.
+#   sudo CRAFTOFFICE_GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com ./install.sh
+# The ID is kept for later updates in /etc/craftoffice-web.drive; without one, files are only downloaded.
+if [ -n "${CRAFTOFFICE_GOOGLE_CLIENT_ID:-}" ]; then
+  printf '%s\n' "$CRAFTOFFICE_GOOGLE_CLIENT_ID" > /etc/craftoffice-web.drive
+fi
+if [ -s /etc/craftoffice-web.drive ]; then
+  ID=$(head -1 /etc/craftoffice-web.drive | tr -cd 'A-Za-z0-9._-')
+  printf '{"clientId": "%s"}\n' "$ID" > /opt/craftoffice-web/drive.json
+  echo "Google Drive saving: on (client ID $ID)"
+fi
 chmod -R a+rX /opt/craftoffice-web
 install -d /etc/caddy
 install -m 0644 Caddyfile /etc/caddy/craftoffice.Caddyfile.example

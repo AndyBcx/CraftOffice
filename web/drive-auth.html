@@ -1,0 +1,17 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>CraftOffice – Google Drive</title></head>
+<body style="background:#14213d;color:#e8ebf2;font:16px system-ui,sans-serif;padding:32px">
+<p id="m">…</p>
+<script>
+// Google sends the sign-in back here; the app's page gets the token on a BroadcastChannel
+// (the page is cross-origin isolated, so this window has no link to it), then this closes.
+(function () {
+  var p = new URLSearchParams(location.hash.slice(1));
+  var ch = new BroadcastChannel("craftoffice-drive");
+  ch.postMessage({ state: p.get("state"), token: p.get("access_token"), expires: Number(p.get("expires_in") || 3600), error: p.get("error") });
+  history.replaceState(null, "", location.pathname);
+  document.getElementById("m").textContent = p.get("access_token") ? "✓ Google Drive" : "✗ " + (p.get("error") || "Google Drive");
+  setTimeout(function () { ch.close(); window.close(); }, 600);
+})();
+</script>
+</body></html>
