@@ -113,6 +113,110 @@ pub fn export_jpeg(doc: &Doc) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// A layered Photoshop file (PSD, uncompressed): every layer with its name, visibility, opacity
+/// and blend mode, and the flattened picture.
+pub fn export_psd(doc: &Doc) -> Vec<u8> {
+    fn be16(v: &mut Vec<u8>, x: u16) {
+        v.extend_from_slice(&x.to_be_bytes());
+    }
+    fn be32(v: &mut Vec<u8>, x: u32) {
+        v.extend_from_slice(&x.to_be_bytes());
+    }
+    let (w, h) = (doc.w, doc.h);
+    let n = (w * h) as usize;
+    let mut out = Vec::with_capacity(n * 4 * (doc.layers.len() + 1) + 1024);
+    out.extend_from_slice(b"8BPS");
+    be16(&mut out, 1);
+    out.extend_from_slice(&[0; 6]);
+    be16(&mut out, 4); // RGB + alpha
+    be32(&mut out, h);
+    be32(&mut out, w);
+    be16(&mut out, 8);
+    be16(&mut out, 3); // RGB
+    be32(&mut out, 0); // colour mode data
+    be32(&mut out, 0); // image resources
+    // layer info
+    let mut li = Vec::new();
+    be16(&mut li, (-(doc.layers.len() as i16)) as u16); // negative: the merged alpha is transparency
+    for l in &doc.layers {
+        be32(&mut li, 0);
+        be32(&mut li, 0);
+        be32(&mut li, h);
+        be32(&mut li, w);
+        be16(&mut li, 4);
+        for id in [-1i16, 0, 1, 2] {
+            be16(&mut li, id as u16);
+            be32(&mut li, 2 + n as u32);
+        }
+        li.extend_from_slice(b"8BIM");
+        let key: &[u8; 4] = match l.blend {
+            Blend::Normal => b"norm",
+            Blend::Multiply => b"mul ",
+            Blend::Screen => b"scrn",
+            Blend::Overlay => b"over",
+            Blend::Darken => b"dark",
+            Blend::Lighten => b"lite",
+            Blend::ColorDodge => b"div ",
+            Blend::ColorBurn => b"idiv",
+            Blend::HardLight => b"hLit",
+            Blend::SoftLight => b"sLit",
+            Blend::Difference => b"diff",
+            Blend::Add => b"lddg",
+        };
+        li.extend_from_slice(key);
+        li.push((l.opacity.clamp(0.0, 1.0) * 255.0).round() as u8);
+        li.push(0); // clipping
+        li.push(if l.visible { 0 } else { 2 });
+        li.push(0);
+        // extra data: no mask, no blending ranges, the name (Pascal, padded to 4)
+        let mut name: Vec<u8> = l.name.chars().map(|c| if c.is_ascii() { c as u8 } else { b'?' }).take(255).collect();
+        let mut pas = vec![name.len() as u8];
+        pas.append(&mut name);
+        while pas.len() % 4 != 0 {
+            pas.push(0);
+        }
+        // and in full (Unicode), which Photoshop shows
+        let u16s: Vec<u16> = l.name.encode_utf16().collect();
+        let mut luni = Vec::new();
+        luni.extend_from_slice(b"8BIMluni");
+        let len = 4 + 2 * u16s.len() as u32;
+        let pad = len % 4;
+        be32(&mut luni, len + if pad > 0 { 4 - pad } else { 0 });
+        be32(&mut luni, u16s.len() as u32);
+        for c in &u16s {
+            be16(&mut luni, *c);
+        }
+        if pad > 0 {
+            luni.extend(std::iter::repeat_n(0u8, (4 - pad) as usize));
+        }
+        be32(&mut li, 8 + pas.len() as u32 + luni.len() as u32);
+        be32(&mut li, 0);
+        be32(&mut li, 0);
+        li.extend_from_slice(&pas);
+        li.extend_from_slice(&luni);
+    }
+    for l in &doc.layers {
+        for c in [3usize, 0, 1, 2] {
+            be16(&mut li, 0); // raw
+            li.extend(l.px.chunks_exact(4).map(|p| p[c]));
+        }
+    }
+    if li.len() % 2 != 0 {
+        li.push(0);
+    }
+    be32(&mut out, li.len() as u32 + 4 + 4);
+    be32(&mut out, li.len() as u32);
+    out.extend_from_slice(&li);
+    be32(&mut out, 0); // global layer mask
+    // the flattened picture, planar
+    be16(&mut out, 0);
+    let flat = doc.flatten(None);
+    for c in 0..4 {
+        out.extend(flat.chunks_exact(4).map(|p| p[c]));
+    }
+    out
+}
+
 /// Lay a picture into a new layer of the drawing, centred and scaled down to fit if needed.
 pub fn picture_layer(doc: &Doc, name: String, iw: u32, ih: u32, rgba: &[u8]) -> Layer {
     let mut l = Layer::new(name, doc.w, doc.h, [0, 0, 0, 0]);
@@ -155,5 +259,19 @@ mod tests {
         let (w, h, _) = decode_image(&p).unwrap();
         assert_eq!((w, h), (8, 6));
         assert!(export_jpeg(&d).unwrap().starts_with(&[0xFF, 0xD8]));
+    }
+
+    #[test]
+    fn psd_layout() {
+        let mut d = Doc::new(3, 2, Some([255, 255, 255, 255]), "Háttér", "L");
+        d.layers[1].blend = Blend::Multiply;
+        let b = export_psd(&d);
+        assert_eq!(&b[0..4], b"8BPS");
+        assert_eq!(u32::from_be_bytes(b[14..18].try_into().unwrap()), 2);
+        assert_eq!(u32::from_be_bytes(b[18..22].try_into().unwrap()), 3);
+        let lm = u32::from_be_bytes(b[34..38].try_into().unwrap()) as usize;
+        // header 26 + 4 + 4 + the layer section's length field and body, then the merged image
+        assert_eq!(b.len(), 34 + 4 + lm + 2 + 3 * 2 * 4);
+        assert!(b.windows(4).any(|w| w == b"mul "));
     }
 }

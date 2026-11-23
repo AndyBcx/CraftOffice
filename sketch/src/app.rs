@@ -6,12 +6,15 @@ use egui::{pos2, vec2, Align2, Color32, CornerRadius, FontId, Key, Pos2, Rect, S
 
 use crate::files;
 use crate::i18n::{self, t, Lang};
-use crate::raster::{self, Blend, Brush, Doc, Gradient, History, IRect, Mode, Moving, Shape, Stroke, Tip, Transform, Undo};
+use crate::raster::{self, Blend, Brush, Doc, Filter, Gradient, History, IRect, Mode, Moving, SelOp, Shape, Stroke, Tip, Transform, Undo};
+use std::sync::Arc;
 use crate::text;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Tool {
     Select,
+    Lasso,
+    Wand,
     Move,
     Pencil,
     Pen,
@@ -29,8 +32,10 @@ pub enum Tool {
     Hand,
 }
 
-const TOOLS: [(Tool, &str, &str); 16] = [
+const TOOLS: [(Tool, &str, &str); 18] = [
     (Tool::Select, "Select", "S"),
+    (Tool::Lasso, "Lasso", "Q"),
+    (Tool::Wand, "Magic Wand", "W"),
     (Tool::Move, "Move", "V"),
     (Tool::Pencil, "Pencil", "P"),
     (Tool::Pen, "Pen", "N"),
@@ -66,7 +71,7 @@ impl Tool {
             Tool::Eraser => (24.0, 1.0, 0.8),
             Tool::Line | Tool::Rect | Tool::Ellipse => (4.0, 1.0, 1.0),
             Tool::Fill | Tool::Gradient => (1.0, 1.0, 1.0),
-            Tool::Eyedropper | Tool::Hand | Tool::Select | Tool::Move | Tool::Text => (1.0, 1.0, 1.0),
+            Tool::Eyedropper | Tool::Hand | Tool::Select | Tool::Lasso | Tool::Wand | Tool::Move | Tool::Text => (1.0, 1.0, 1.0),
         };
         ToolSettings { size, opacity, hardness }
     }
@@ -102,6 +107,7 @@ pub enum SaveKind {
     Project,
     Png,
     Jpeg,
+    Psd,
 }
 
 impl SaveKind {
@@ -110,6 +116,7 @@ impl SaveKind {
             SaveKind::Project => "cosketch",
             SaveKind::Png => "png",
             SaveKind::Jpeg => "jpg",
+            SaveKind::Psd => "psd",
         }
     }
 }
@@ -198,6 +205,25 @@ pub struct SketchApp {
     /// 0 copy, 1 cut, 2 paste, from the keyboard.
     clip_cmd: Option<u8>,
     move_off: (i64, i64),
+    /// The shape of the selection (doc-sized, 0..255) when it is not just its rectangle.
+    sel_mask: Option<Arc<Vec<u8>>>,
+    /// Its outline, in canvas pixels (None: too detailed, the rectangle is drawn).
+    sel_outline: Option<Vec<raster::Segment>>,
+    sel_op: SelOp,
+    lasso: Vec<(f32, f32)>,
+    wand_tol: u8,
+    wand_contiguous: bool,
+    filter_dlg: Option<FilterDlg>,
+}
+
+/// A filter being tried out on the active layer.
+struct FilterDlg {
+    f: Filter,
+    layer: usize,
+    rect: IRect,
+    /// The layer as it was.
+    src: Vec<u8>,
+    shown: Option<Filter>,
 }
 
 const PALETTE: [[u8; 3]; 18] = [
@@ -284,6 +310,13 @@ impl SketchApp {
             clipboard: None,
             clip_cmd: None,
             move_off: (0, 0),
+            sel_mask: None,
+            sel_outline: None,
+            sel_op: SelOp::Replace,
+            lasso: Vec::new(),
+            wand_tol: 32,
+            wand_contiguous: true,
+            filter_dlg: None,
         };
         if let Some((name, path, bytes)) = open {
             app.open_bytes(name, path, bytes, false);
@@ -311,8 +344,9 @@ impl SketchApp {
         self.fit = true;
         self.stroke = None;
         self.moving = None;
-        self.selection = None;
         self.text_dlg = None;
+        self.filter_dlg = None;
+        self.set_rect_selection(None);
     }
 
     fn open_bytes(&mut self, name: String, path: Option<String>, bytes: Vec<u8>, as_layer: bool) {
@@ -365,6 +399,7 @@ impl SketchApp {
 
     /// A structural change (layers, size) as one undo step.
     fn doc_op(&mut self, f: impl FnOnce(&mut Doc)) {
+        self.cancel_filter();
         let before = Box::new(self.doc.clone());
         f(&mut self.doc);
         self.doc.active = self.doc.active.min(self.doc.layers.len().saturating_sub(1));
@@ -388,6 +423,7 @@ impl SketchApp {
     }
 
     fn undo(&mut self) {
+        self.cancel_filter();
         self.cancel_stroke();
         if self.hist.undo(&mut self.doc).is_some() {
             self.rebuild = true;
@@ -396,6 +432,7 @@ impl SketchApp {
     }
 
     fn redo(&mut self) {
+        self.cancel_filter();
         if self.hist.redo(&mut self.doc).is_some() {
             self.rebuild = true;
             self.dirty = true;
@@ -418,6 +455,7 @@ impl SketchApp {
         self.grad_start = None;
         self.grad_end = None;
         self.sel_start = None;
+        self.lasso.clear();
     }
 
     /// Finish a move in progress.
@@ -426,8 +464,21 @@ impl SketchApp {
             let dst = m.dst;
             let u = m.end(&self.doc);
             self.pixels(u);
-            if self.selection.is_some() {
-                self.selection = Some(dst).filter(|r| !r.is_empty());
+            if let Some(mask) = self.sel_mask.clone() {
+                let (w, h) = (self.doc.w as i64, self.doc.h as i64);
+                let (dx, dy) = self.move_off;
+                let mut moved = vec![0u8; mask.len()];
+                for y in 0..h {
+                    for x in 0..w {
+                        let (sx, sy) = (x - dx, y - dy);
+                        if sx >= 0 && sy >= 0 && sx < w && sy < h {
+                            moved[(y * w + x) as usize] = mask[(sy * w + sx) as usize];
+                        }
+                    }
+                }
+                self.set_mask_selection(moved);
+            } else if self.selection.is_some() {
+                self.set_rect_selection(Some(dst).filter(|r| !r.is_empty()));
             }
         }
         self.move_start = None;
@@ -440,9 +491,66 @@ impl SketchApp {
         self.selection.unwrap_or(self.doc.full())
     }
 
+    /// A plain rectangle selection (or none).
+    fn set_rect_selection(&mut self, r: Option<IRect>) {
+        self.selection = r;
+        self.sel_mask = None;
+        self.sel_outline = None;
+    }
+
+    /// A selection with a shape.
+    fn set_mask_selection(&mut self, mask: Vec<u8>) {
+        let (w, h) = (self.doc.w, self.doc.h);
+        let b = raster::mask_bounds(&mask, w, h);
+        if b.is_empty() {
+            self.set_rect_selection(None);
+            return;
+        }
+        self.sel_outline = raster::mask_outline(&mask, w, h, 60_000);
+        self.selection = Some(b);
+        self.sel_mask = Some(Arc::new(mask));
+    }
+
+    /// The current selection as a mask (empty when there is none).
+    fn current_mask(&self) -> Vec<u8> {
+        match (&self.sel_mask, self.selection) {
+            (Some(m), _) => m.to_vec(),
+            (None, Some(r)) => raster::rect_mask(r, self.doc.w, self.doc.h),
+            (None, None) => vec![0u8; (self.doc.w * self.doc.h) as usize],
+        }
+    }
+
+    /// Join a newly drawn selection to the current one, by the Shift (add) / Alt (subtract) keys
+    /// held when it was started.
+    fn join_selection(&mut self, new: Vec<u8>, op: SelOp) {
+        let m = if op == SelOp::Replace { new } else { raster::combine_masks(&self.current_mask(), &new, op) };
+        self.set_mask_selection(m);
+    }
+
+    fn invert_selection(&mut self) {
+        let m: Vec<u8> = if self.selection.is_none() { vec![255u8; (self.doc.w * self.doc.h) as usize] } else { self.current_mask().iter().map(|v| 255 - v).collect() };
+        self.set_mask_selection(m);
+    }
+
+    /// Keep an edit only inside the shape of the selection.
+    fn masked(&mut self, u: Option<Undo>) -> Option<Undo> {
+        match self.sel_mask.clone() {
+            Some(m) => raster::mask_undo(&mut self.doc, u, &m),
+            None => u,
+        }
+    }
+
     fn copy(&mut self) {
         let r = self.sel_or_all();
-        let data = raster::crop(&self.doc.layers[self.doc.active].px, self.doc.w, r);
+        let mut data = raster::crop(&self.doc.layers[self.doc.active].px, self.doc.w, r);
+        if let Some(m) = &self.sel_mask {
+            for y in r.y0..r.y1 {
+                for x in r.x0..r.x1 {
+                    let k = (((y - r.y0) * r.width() + (x - r.x0)) * 4 + 3) as usize;
+                    data[k] = (data[k] as u32 * m[(y * self.doc.w + x) as usize] as u32 / 255) as u8;
+                }
+            }
+        }
         self.clipboard = Some((r, data));
     }
 
@@ -450,6 +558,7 @@ impl SketchApp {
         if let Some(r) = self.selection {
             let l = self.doc.active;
             let u = raster::clear_rect(&mut self.doc, l, r);
+            let u = self.masked(u);
             self.pixels(u);
         }
     }
@@ -459,7 +568,67 @@ impl SketchApp {
         let r = self.sel_or_all();
         let l = self.doc.active;
         let u = raster::clear_rect(&mut self.doc, l, r);
+        let u = self.masked(u);
         self.pixels(u);
+    }
+
+    // ---- filters ----
+
+    fn open_filter(&mut self, f: Filter) {
+        self.drop_moving();
+        self.cancel_filter();
+        let layer = self.doc.active;
+        let rect = self.sel_or_all();
+        let src = self.doc.layers[layer].px.clone();
+        if matches!(f, Filter::Invert | Filter::Desaturate) {
+            raster::filter_region(&mut self.doc, layer, f, rect, &src);
+            let u = Some(Undo::Pixels { layer, rect, before: raster::crop(&src, self.doc.w, rect), after: raster::crop(&self.doc.layers[layer].px, self.doc.w, rect) });
+            let u = self.masked(u);
+            self.pixels(u);
+            return;
+        }
+        self.filter_dlg = Some(FilterDlg { f, layer, rect, src, shown: None });
+    }
+
+    /// Show the filter dialog's settings on the layer.
+    fn preview_filter(&mut self) {
+        let Some(d) = self.filter_dlg.as_mut() else { return };
+        if d.shown == Some(d.f) || d.layer >= self.doc.layers.len() {
+            return;
+        }
+        d.shown = Some(d.f);
+        let (layer, rect, f) = (d.layer, d.rect, d.f);
+        let src = std::mem::take(&mut d.src);
+        raster::paste(&mut self.doc.layers[layer].px, self.doc.w, rect, &raster::crop(&src, self.doc.w, rect));
+        raster::filter_region(&mut self.doc, layer, f, rect, &src);
+        if let Some(m) = self.sel_mask.clone() {
+            let u = Some(Undo::Pixels { layer, rect, before: raster::crop(&src, self.doc.w, rect), after: raster::crop(&self.doc.layers[layer].px, self.doc.w, rect) });
+            raster::mask_undo(&mut self.doc, u, &m);
+        }
+        if let Some(d) = self.filter_dlg.as_mut() {
+            d.src = src;
+        }
+        self.mark(rect);
+    }
+
+    fn apply_filter(&mut self) {
+        self.preview_filter();
+        if let Some(d) = self.filter_dlg.take() {
+            let before = raster::crop(&d.src, self.doc.w, d.rect);
+            let after = raster::crop(&self.doc.layers[d.layer].px, self.doc.w, d.rect);
+            if before != after {
+                self.pixels(Some(Undo::Pixels { layer: d.layer, rect: d.rect, before, after }));
+            }
+        }
+    }
+
+    fn cancel_filter(&mut self) {
+        if let Some(d) = self.filter_dlg.take() {
+            if d.layer < self.doc.layers.len() && d.src.len() == self.doc.layers[d.layer].px.len() {
+                self.doc.layers[d.layer].px = d.src;
+                self.mark(d.rect);
+            }
+        }
     }
 
     /// Paste as a new layer, where it was copied from (or centred if that is off the canvas).
@@ -480,7 +649,7 @@ impl SketchApp {
             d.layers.insert(at, l);
             d.active = at;
         });
-        self.selection = Some(dst);
+        self.set_rect_selection(Some(dst));
         self.tool = Tool::Move;
     }
 
@@ -623,6 +792,7 @@ impl SketchApp {
                     SaveKind::Project => ("CraftOffice Sketch", "cosketch"),
                     SaveKind::Png => ("PNG", "png"),
                     SaveKind::Jpeg => ("JPEG", "jpg"),
+                    SaveKind::Psd => ("Photoshop", "psd"),
                 };
                 if let Some(mut p) = rfd::FileDialog::new().set_file_name(&name).add_filter(filter.0, &[filter.1]).save_file() {
                     if p.extension().is_none() {
@@ -654,6 +824,7 @@ impl SketchApp {
             SaveKind::Project => files::save_project(&self.doc),
             SaveKind::Png => files::export_png(&self.doc),
             SaveKind::Jpeg => files::export_jpeg(&self.doc),
+            SaveKind::Psd => Ok(files::export_psd(&self.doc)),
         }
     }
 
@@ -707,7 +878,7 @@ impl SketchApp {
     // ---- keyboard ----
 
     fn shortcuts_input(&mut self, ctx: &egui::Context) {
-        if ctx.egui_wants_keyboard_input() || self.new_dlg.is_some() || self.size_dlg.is_some() || self.rename.is_some() || self.text_dlg.is_some() {
+        if ctx.egui_wants_keyboard_input() || self.new_dlg.is_some() || self.size_dlg.is_some() || self.rename.is_some() || self.text_dlg.is_some() || self.filter_dlg.is_some() {
             return;
         }
         let (cmd, shift) = ctx.input(|i| (i.modifiers.command, i.modifiers.shift));
@@ -744,11 +915,15 @@ impl SketchApp {
             }
             if pressed(Key::A) {
                 self.drop_moving();
-                self.selection = Some(self.doc.full());
+                self.set_rect_selection(Some(self.doc.full()));
             }
             if pressed(Key::D) {
                 self.drop_moving();
-                self.selection = None;
+                self.set_rect_selection(None);
+            }
+            if pressed(Key::I) && ctx.input(|i| i.modifiers.shift) {
+                self.drop_moving();
+                self.invert_selection();
             }
             if pressed(Key::C) {
                 self.clip_cmd = Some(0);
@@ -863,6 +1038,10 @@ impl SketchApp {
                     self.save(&ctx, SaveKind::Png, true);
                     ui.close();
                 }
+                if ui.button(t("Export PSD (layers)…")).clicked() {
+                    self.save(&ctx, SaveKind::Psd, true);
+                    ui.close();
+                }
                 if ui.button(t("Export JPEG…")).clicked() {
                     self.save(&ctx, SaveKind::Jpeg, true);
                     ui.close();
@@ -908,12 +1087,17 @@ impl SketchApp {
                 ui.separator();
                 if ui.button(format!("{}   Ctrl+A", t("Select All"))).clicked() {
                     self.drop_moving();
-                    self.selection = Some(self.doc.full());
+                    self.set_rect_selection(Some(self.doc.full()));
                     ui.close();
                 }
                 if ui.add_enabled(self.selection.is_some(), egui::Button::new(format!("{}   Ctrl+D", t("Deselect")))).clicked() {
                     self.drop_moving();
-                    self.selection = None;
+                    self.set_rect_selection(None);
+                    ui.close();
+                }
+                if ui.button(format!("{}   Ctrl+Shift+I", t("Invert Selection"))).clicked() {
+                    self.drop_moving();
+                    self.invert_selection();
                     ui.close();
                 }
                 ui.separator();
@@ -951,7 +1135,8 @@ impl SketchApp {
                 ui.separator();
                 if ui.add_enabled(self.selection.is_some(), egui::Button::new(t("Crop to Selection"))).clicked() {
                     self.drop_moving();
-                    if let Some(r) = self.selection.take() {
+                    if let Some(r) = self.selection {
+                        self.set_rect_selection(None);
                         self.doc_op(|d| raster::crop_doc(d, r));
                         self.fit = true;
                     }
@@ -970,6 +1155,22 @@ impl SketchApp {
                         d.active = 0;
                     });
                     ui.close();
+                }
+            });
+            ui.menu_button(t("Filters"), |ui| {
+                for f in [
+                    Filter::Blur(4.0),
+                    Filter::Sharpen(1.0, 2.0),
+                    Filter::BrightnessContrast(0.0, 0.0),
+                    Filter::HueSaturation(0.0, 0.0, 0.0),
+                    Filter::Invert,
+                    Filter::Desaturate,
+                ] {
+                    let label = if matches!(f, Filter::Invert | Filter::Desaturate) { t(f.name()).to_string() } else { format!("{}…", t(f.name())) };
+                    if ui.button(label).clicked() {
+                        self.open_filter(f);
+                        ui.close();
+                    }
                 }
             });
             ui.menu_button(t("Layer"), |ui| {
@@ -1204,6 +1405,18 @@ impl SketchApp {
                 ui.radio_value(&mut self.grad_fade, true, t("Colour to transparent"));
                 ui.label(egui::RichText::new(t("Drag on the canvas to lay the gradient.")).small().weak());
             }
+            if tool == Tool::Wand {
+                ui.add(egui::Slider::new(&mut self.wand_tol, 0..=255).text(t("Tolerance")));
+                ui.checkbox(&mut self.wand_contiguous, t("Contiguous"));
+            }
+            if matches!(tool, Tool::Select | Tool::Lasso | Tool::Wand) {
+                ui.label(egui::RichText::new(t("Shift: add to the selection · Alt: take away from it")).small().weak());
+            }
+            if matches!(tool, Tool::Lasso | Tool::Wand) {
+                if let Some(r) = self.selection {
+                    ui.label(format!("{} × {} {}", r.width(), r.height(), t("pixels")));
+                }
+            }
             if matches!(tool, Tool::Select | Tool::Move) {
                 ui.label(egui::RichText::new(t(if tool == Tool::Select {
                     "Drag to select a rectangle; painting stays inside it. Click to deselect."
@@ -1386,15 +1599,52 @@ impl SketchApp {
                 if resp.drag_started() {
                     let o = ctx.input(|i| i.pointer.press_origin()).unwrap_or(p);
                     self.sel_start = Some(self.to_canvas(rect, o));
+                    self.sel_op = if alt { SelOp::Subtract } else if shift { SelOp::Add } else { SelOp::Replace };
                 }
                 if let Some(a) = self.sel_start {
-                    let b = if shift { constrain(Shape::Rect, a, c) } else { c };
-                    self.selection = Some(IRect::between(a, b, self.doc.w, self.doc.h)).filter(|r| !r.is_empty());
-                    if resp.drag_stopped() || !ctx.input(|i| i.pointer.any_down()) {
+                    let b = if shift && self.sel_op == SelOp::Replace { constrain(Shape::Rect, a, c) } else { c };
+                    let r = IRect::between(a, b, self.doc.w, self.doc.h);
+                    let done = resp.drag_stopped() || !ctx.input(|i| i.pointer.any_down());
+                    if self.sel_op == SelOp::Replace {
+                        self.set_rect_selection(Some(r).filter(|r| !r.is_empty()));
+                    } else {
+                        self.shape_end = Some(b);
+                        if done {
+                            self.shape_end = None;
+                            let m = raster::rect_mask(r, self.doc.w, self.doc.h);
+                            self.join_selection(m, self.sel_op);
+                        }
+                    }
+                    if done {
                         self.sel_start = None;
                     }
                 } else if resp.clicked() {
-                    self.selection = None;
+                    self.set_rect_selection(None);
+                }
+            } else if tool == Tool::Lasso {
+                if resp.drag_started() {
+                    let o = ctx.input(|i| i.pointer.press_origin()).unwrap_or(p);
+                    self.lasso = vec![self.to_canvas(rect, o)];
+                    self.sel_op = if alt { SelOp::Subtract } else if shift { SelOp::Add } else { SelOp::Replace };
+                }
+                if !self.lasso.is_empty() {
+                    let last = *self.lasso.last().unwrap();
+                    if (c.0 - last.0).abs() + (c.1 - last.1).abs() >= 1.0 / self.zoom.max(0.01) {
+                        self.lasso.push(c);
+                    }
+                    if resp.drag_stopped() || !ctx.input(|i| i.pointer.any_down()) {
+                        let pts = std::mem::take(&mut self.lasso);
+                        let m = raster::polygon_mask(&pts, self.doc.w, self.doc.h);
+                        self.join_selection(m, self.sel_op);
+                    }
+                } else if resp.clicked() && !shift && !alt {
+                    self.set_rect_selection(None);
+                }
+            } else if tool == Tool::Wand {
+                if resp.clicked() && (c.0 as u32) < self.doc.w && (c.1 as u32) < self.doc.h && c.0 >= 0.0 && c.1 >= 0.0 {
+                    let op = if alt { SelOp::Subtract } else if shift { SelOp::Add } else { SelOp::Replace };
+                    let m = raster::wand_mask(&self.doc, self.doc.active, c.0 as u32, c.1 as u32, self.wand_tol, self.wand_contiguous);
+                    self.join_selection(m, op);
                 }
             } else if tool == Tool::Move {
                 if resp.drag_started() && self.moving.is_none() && self.doc.layers[self.doc.active].visible {
@@ -1403,7 +1653,8 @@ impl SketchApp {
                     self.move_off = (0, 0);
                     let src = self.sel_or_all();
                     let layer = self.doc.active;
-                    self.moving = Some(Moving::begin(&mut self.doc, layer, src));
+                    let mask = self.sel_mask.clone();
+                    self.moving = Some(Moving::begin(&mut self.doc, layer, src, mask.as_deref().map(|m| m.as_slice())));
                     self.mark(src);
                 }
                 if let Some(st) = self.move_start {
@@ -1434,6 +1685,7 @@ impl SketchApp {
                         let op = self.settings[&Tool::Gradient].opacity;
                         let layer = self.doc.active;
                         let u = raster::gradient(&mut self.doc, layer, self.grad_kind, a, b, start, end, op, self.selection);
+                        let u = self.masked(u);
                         self.pixels(u);
                         self.remember_colour();
                         self.grad_start = None;
@@ -1464,6 +1716,7 @@ impl SketchApp {
                     let op = self.settings[&Tool::Fill].opacity;
                     let layer = self.doc.active;
                     let u = raster::flood_fill(&mut self.doc, layer, c.0 as u32, c.1 as u32, [col.r(), col.g(), col.b()], op, self.tolerance, self.selection);
+                    let u = self.masked(u);
                     self.pixels(u);
                     self.remember_colour();
                 }
@@ -1472,6 +1725,7 @@ impl SketchApp {
                     if self.stroke.is_none() && self.doc.layers[self.doc.active].visible {
                         let mut st = Stroke::begin(&self.doc, self.doc.active, self.brush());
                         st.clip = self.selection;
+                        st.sel = self.sel_mask.clone();
                         self.stroke = Some(st);
                         self.smooth = Some(ctx.input(|i| i.pointer.press_origin()).unwrap_or(p));
                         self.remember_colour();
@@ -1524,9 +1778,11 @@ impl SketchApp {
                         if self.shape_fill && kind != Shape::Line {
                             let col = self.color;
                             let u = raster::fill_shape(&mut self.doc, layer, kind, a, b, [col.r(), col.g(), col.b()], brush.opacity, self.selection);
+                            let u = self.masked(u);
                             self.pixels(u);
                         } else {
                             let u = raster::stroke_path(&mut self.doc, layer, brush, &raster::shape_points(kind, a, b), self.selection);
+                            let u = self.masked(u);
                             self.pixels(u);
                         }
                         self.remember_colour();
@@ -1574,28 +1830,54 @@ impl SketchApp {
             painter.rect_stroke(Rect::from_min_size(p - vec2(3.0, 3.0), vec2(6.0, 6.0)), 0, UiStroke::new(1.0, Color32::WHITE), egui::StrokeKind::Middle);
         }
         // the selection, and where the moved pixels are
-        let sel = self.moving.as_ref().filter(|_| self.selection.is_some()).map(|m| m.dst).or(self.selection);
-        if let Some(r) = sel.filter(|r| !r.is_empty()) {
-            let sr = Rect::from_min_max(self.to_screen(rect, (r.x0 as f32, r.y0 as f32)), self.to_screen(rect, (r.x1 as f32, r.y1 as f32)));
-            let pts = [sr.left_top(), sr.right_top(), sr.right_bottom(), sr.left_bottom(), sr.left_top()];
-            painter.add(egui::Shape::line(pts.to_vec(), UiStroke::new(1.0, Color32::WHITE)));
-            // marching ants
-            let phase = (ctx.input(|i| i.time) * 8.0) as f32 % 8.0;
-            for w in pts.windows(2) {
-                let (a, b) = (w[0], w[1]);
-                let len = (b - a).length();
-                let dir = (b - a) / len.max(1e-3);
-                let mut d = -phase;
-                while d < len {
-                    let s0 = d.max(0.0);
-                    let s1 = (d + 4.0).min(len);
-                    if s1 > s0 {
-                        painter.line_segment([a + dir * s0, a + dir * s1], UiStroke::new(1.0, Color32::BLACK));
-                    }
-                    d += 8.0;
+        let ants = |painter: &egui::Painter, a: Pos2, b: Pos2, phase: f32| {
+            painter.line_segment([a, b], UiStroke::new(1.0, Color32::WHITE));
+            let len = (b - a).length();
+            let dir = (b - a) / len.max(1e-3);
+            let mut d = -phase;
+            while d < len {
+                let s0 = d.max(0.0);
+                let s1 = (d + 4.0).min(len);
+                if s1 > s0 {
+                    painter.line_segment([a + dir * s0, a + dir * s1], UiStroke::new(1.0, Color32::BLACK));
+                }
+                d += 8.0;
+            }
+        };
+        let phase = (ctx.input(|i| i.time) * 8.0) as f32 % 8.0;
+        let moving_off = self.moving.as_ref().map(|_| self.move_off).unwrap_or((0, 0));
+        if let (Some(segs), true) = (&self.sel_outline, self.sel_mask.is_some()) {
+            let off = (moving_off.0 as f32, moving_off.1 as f32);
+            let clip = painter.clip_rect();
+            for &((x0, y0), (x1, y1)) in segs {
+                let a = self.to_screen(rect, (x0 as f32 + off.0, y0 as f32 + off.1));
+                let b = self.to_screen(rect, (x1 as f32 + off.0, y1 as f32 + off.1));
+                if clip.intersects(Rect::from_two_pos(a, b).expand(1.0)) {
+                    ants(&painter, a, b, phase);
                 }
             }
             ctx.request_repaint_after(std::time::Duration::from_millis(120));
+        } else {
+            let sel = self.moving.as_ref().filter(|_| self.selection.is_some()).map(|m| m.dst).or(self.selection);
+            if let Some(r) = sel.filter(|r| !r.is_empty()) {
+                let sr = Rect::from_min_max(self.to_screen(rect, (r.x0 as f32, r.y0 as f32)), self.to_screen(rect, (r.x1 as f32, r.y1 as f32)));
+                let pts = [sr.left_top(), sr.right_top(), sr.right_bottom(), sr.left_bottom(), sr.left_top()];
+                for w in pts.windows(2) {
+                    ants(&painter, w[0], w[1], phase);
+                }
+                ctx.request_repaint_after(std::time::Duration::from_millis(120));
+            }
+        }
+        // a rectangle being added to or taken from the selection
+        if let (Some(a), Some(b), true) = (self.sel_start, self.shape_end, self.sel_op != SelOp::Replace) {
+            let r = Rect::from_two_pos(self.to_screen(rect, a), self.to_screen(rect, b));
+            painter.rect_stroke(r, 0, UiStroke::new(1.0, if self.sel_op == SelOp::Add { Color32::WHITE } else { Color32::from_rgb(255, 120, 120) }), egui::StrokeKind::Middle);
+        }
+        // the lasso being drawn
+        if self.lasso.len() > 1 {
+            let pts: Vec<Pos2> = self.lasso.iter().map(|&q| self.to_screen(rect, q)).collect();
+            painter.add(egui::Shape::line(pts.clone(), UiStroke::new(2.5, Color32::from_black_alpha(150))));
+            painter.add(egui::Shape::line(pts, UiStroke::new(1.0, Color32::WHITE)));
         }
         // the brush outline
         if let Some(hp) = hover_screen {
@@ -1740,6 +2022,52 @@ impl SketchApp {
                 self.fit = true;
             } else if keep && !ctx.input(|i| i.key_pressed(Key::Escape)) {
                 self.size_dlg = Some(d);
+            }
+        }
+        if let Some(mut d) = self.filter_dlg.take() {
+            let mut open = true;
+            let (mut ok, mut cancel) = (false, false);
+            egui::Window::new(t(d.f.name())).collapsible(false).resizable(false).open(&mut open).default_pos(ctx.content_rect().right_top() + vec2(-320.0, 80.0)).show(ctx, |ui| {
+                ui.set_width(280.0);
+                match &mut d.f {
+                    Filter::Blur(r) => {
+                        ui.add(egui::Slider::new(r, 0.5..=50.0).logarithmic(true).suffix(" px").text(t("Radius")));
+                    }
+                    Filter::Sharpen(a, r) => {
+                        ui.add(egui::Slider::new(a, 0.0..=3.0).text(t("Amount")));
+                        ui.add(egui::Slider::new(r, 0.5..=10.0).suffix(" px").text(t("Radius")));
+                    }
+                    Filter::BrightnessContrast(b, c) => {
+                        ui.add(egui::Slider::new(b, -1.0..=1.0).text(t("Brightness")));
+                        ui.add(egui::Slider::new(c, -1.0..=1.0).text(t("Contrast")));
+                    }
+                    Filter::HueSaturation(h, sa, l) => {
+                        ui.add(egui::Slider::new(h, -180.0..=180.0).suffix("°").text(t("Hue")));
+                        ui.add(egui::Slider::new(sa, -1.0..=1.0).text(t("Saturation")));
+                        ui.add(egui::Slider::new(l, -1.0..=1.0).text(t("Lightness")));
+                    }
+                    _ => {}
+                }
+                ui.label(egui::RichText::new(t(if self.selection.is_some() { "On the active layer, inside the selection." } else { "On the active layer." })).small().weak());
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ok = ui.button(t("Apply")).clicked();
+                    cancel = ui.button(t("Cancel")).clicked();
+                });
+            });
+            if ctx.input(|i| i.key_pressed(Key::Enter)) {
+                ok = true;
+            }
+            if ctx.input(|i| i.key_pressed(Key::Escape)) {
+                cancel = true;
+            }
+            self.filter_dlg = Some(d);
+            if ok {
+                self.apply_filter();
+            } else if cancel || !open {
+                self.cancel_filter();
+            } else {
+                self.preview_filter();
             }
         }
         if let Some(mut d) = self.text_dlg.take() {
@@ -1905,6 +2233,7 @@ fn mime(kind: SaveKind) -> &'static str {
         SaveKind::Project => "application/octet-stream",
         SaveKind::Png => "image/png",
         SaveKind::Jpeg => "image/jpeg",
+        SaveKind::Psd => "image/vnd.adobe.photoshop",
     }
 }
 
@@ -1950,6 +2279,23 @@ fn tool_icon(p: &egui::Painter, r: Rect, tool: Tool, c: Color32) {
                     line(&[(a.0 + (b.0 - a.0) * t0, a.1 + (b.1 - a.1) * t0), (a.0 + (b.0 - a.0) * t1, a.1 + (b.1 - a.1) * t1)]);
                 }
             }
+        }
+        Tool::Lasso => {
+            let pts: Vec<(f32, f32)> = (0..=24)
+                .map(|k| {
+                    let a = k as f32 / 24.0 * std::f32::consts::TAU;
+                    (0.5 + 0.4 * a.cos(), 0.42 + 0.28 * a.sin())
+                })
+                .collect();
+            line(&pts);
+            line(&[(0.38, 0.68), (0.3, 0.85), (0.4, 0.95)]);
+        }
+        Tool::Wand => {
+            line(&[(0.15, 0.9), (0.62, 0.43)]);
+            line(&[(0.72, 0.1), (0.72, 0.3)]);
+            line(&[(0.62, 0.2), (0.82, 0.2)]);
+            line(&[(0.85, 0.35), (0.95, 0.45)]);
+            line(&[(0.5, 0.1), (0.55, 0.15)]);
         }
         Tool::Move => {
             line(&[(0.5, 0.05), (0.5, 0.95)]);
@@ -2061,8 +2407,14 @@ impl eframe::App for SketchApp {
         }
         self.shortcuts_input(&ctx);
         self.clip_commands(&ctx);
+        if self.sel_mask.as_ref().is_some_and(|m| m.len() != (self.doc.w * self.doc.h) as usize) {
+            self.set_rect_selection(None);
+        }
         if let Some(r) = self.selection {
             self.selection = Some(r.intersect(self.doc.full())).filter(|r| !r.is_empty());
+            if self.selection.is_none() {
+                self.set_rect_selection(None);
+            }
         }
         self.sync_textures(&ctx);
         let title = format!("{}{} – CraftOffice Sketch", self.name, if self.dirty { " •" } else { "" });

@@ -341,6 +341,8 @@ pub struct Stroke {
     pub dirty: IRect,
     /// Paint only inside this rectangle (the selection).
     pub clip: Option<IRect>,
+    /// …and only as much as this selection mask (doc-sized, 0..255) allows.
+    pub sel: Option<std::sync::Arc<Vec<u8>>>,
     stamps: u32,
     last: Option<(f32, f32, f32)>,
     /// Distance left over from the previous segment, so stamps stay evenly spaced.
@@ -356,6 +358,7 @@ impl Stroke {
             brush,
             dirty: IRect::empty(),
             clip: None,
+            sel: None,
             stamps: 0,
             last: None,
             carry: 0.0,
@@ -412,9 +415,14 @@ impl Stroke {
         let flow = (self.brush.flow * alpha).clamp(0.0, 1.0);
         let tip = self.brush.tip;
         let buildup = self.brush.buildup;
+        let sel = self.sel.clone();
         let put = |mask: &mut Vec<u8>, x: i64, y: i64, c: f32| {
-            let v = (c * flow * 255.0) as u32;
             let i = (y as u32 * w + x as u32) as usize;
+            let c = match &sel {
+                Some(s) => c * s[i] as f32 / 255.0,
+                None => c,
+            };
+            let v = (c * flow * 255.0) as u32;
             let m = mask[i] as u32;
             mask[i] = if buildup { (m + (255 - m) * v / 255).min(255) } else { m.max(v) } as u8;
         };
@@ -783,12 +791,28 @@ pub struct Moving {
 }
 
 impl Moving {
-    pub fn begin(doc: &mut Doc, layer: usize, src: IRect) -> Self {
+    pub fn begin(doc: &mut Doc, layer: usize, src: IRect, sel: Option<&[u8]>) -> Self {
         let src = src.intersect(doc.full());
         let before = doc.layers[layer].px.clone();
-        let data = crop(&before, doc.w, src);
+        let mut data = crop(&before, doc.w, src);
         let mut base = before.clone();
-        paste(&mut base, doc.w, src, &vec![0u8; data.len()]);
+        match sel {
+            None => paste(&mut base, doc.w, src, &vec![0u8; data.len()]),
+            Some(m) => {
+                // the selected part moves, the rest stays
+                for y in src.y0..src.y1 {
+                    for x in src.x0..src.x1 {
+                        let mi = (y * doc.w + x) as usize;
+                        let k = mi * 4 + 3;
+                        let d = (((y - src.y0) * src.width() + (x - src.x0)) * 4 + 3) as usize;
+                        let a = before[k] as u32;
+                        let sm = m[mi] as u32;
+                        data[d] = (a * sm / 255) as u8;
+                        base[k] = (a * (255 - sm) / 255) as u8;
+                    }
+                }
+            }
+        }
         let mut m = Moving { layer, before, base, src, data, dst: IRect::empty(), touched: src };
         m.place(doc, 0, 0);
         m
@@ -852,6 +876,402 @@ pub fn crop_doc(doc: &mut Doc, r: IRect) {
     }
     doc.w = r.width();
     doc.h = r.height();
+}
+
+// ---------- Selections with a shape (lasso, magic wand) ----------
+
+/// The bounds of a selection mask's selected pixels.
+pub fn mask_bounds(mask: &[u8], w: u32, h: u32) -> IRect {
+    let mut r = IRect::empty();
+    for y in 0..h {
+        let row = &mask[(y * w) as usize..((y + 1) * w) as usize];
+        if let Some(x0) = row.iter().position(|&v| v > 0) {
+            let x1 = row.iter().rposition(|&v| v > 0).unwrap_or(x0);
+            r.union(IRect { x0: x0 as u32, y0: y, x1: x1 as u32 + 1, y1: y + 1 });
+        }
+    }
+    r
+}
+
+/// A rectangle as a selection mask.
+pub fn rect_mask(r: IRect, w: u32, h: u32) -> Vec<u8> {
+    let mut m = vec![0u8; (w * h) as usize];
+    let r = r.intersect(IRect { x0: 0, y0: 0, x1: w, y1: h });
+    for y in r.y0..r.y1 {
+        m[(y * w + r.x0) as usize..(y * w + r.x1) as usize].fill(255);
+    }
+    m
+}
+
+/// A closed polygon (canvas points) as an anti-aliased selection mask.
+pub fn polygon_mask(pts: &[(f32, f32)], w: u32, h: u32) -> Vec<u8> {
+    let mut acc = vec![0f32; (w * h) as usize];
+    if pts.len() < 3 {
+        return vec![0u8; (w * h) as usize];
+    }
+    const SUB: u32 = 4;
+    let ymin = pts.iter().map(|p| p.1).fold(f32::MAX, f32::min).floor().max(0.0) as u32;
+    let ymax = (pts.iter().map(|p| p.1).fold(f32::MIN, f32::max).ceil().max(0.0) as u32).min(h);
+    let mut xs = Vec::new();
+    for y in ymin..ymax {
+        for s in 0..SUB {
+            let sy = y as f32 + (s as f32 + 0.5) / SUB as f32;
+            xs.clear();
+            for i in 0..pts.len() {
+                let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
+                if (a.1 <= sy && b.1 > sy) || (b.1 <= sy && a.1 > sy) {
+                    xs.push(a.0 + (sy - a.1) / (b.1 - a.1) * (b.0 - a.0));
+                }
+            }
+            xs.sort_by(|a, b| a.total_cmp(b));
+            for pair in xs.chunks_exact(2) {
+                let (xa, xb) = (pair[0].clamp(0.0, w as f32), pair[1].clamp(0.0, w as f32));
+                if xb <= xa {
+                    continue;
+                }
+                let (pa, pb) = (xa.floor() as u32, (xb.ceil() as u32).min(w));
+                for px in pa..pb {
+                    let cov = (xb.min(px as f32 + 1.0) - xa.max(px as f32)).max(0.0);
+                    acc[(y * w + px) as usize] += cov / SUB as f32;
+                }
+            }
+        }
+    }
+    acc.iter().map(|v| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8).collect()
+}
+
+/// The pixels of a layer like the one at (x, y), within `tolerance`, joined to it (or anywhere
+/// on the layer, `contiguous` off): the Magic Wand.
+pub fn wand_mask(doc: &Doc, layer: usize, x: u32, y: u32, tolerance: u8, contiguous: bool) -> Vec<u8> {
+    let (w, h) = (doc.w as usize, doc.h as usize);
+    let mut out = vec![0u8; w * h];
+    if x >= doc.w || y >= doc.h {
+        return out;
+    }
+    let src = &doc.layers[layer].px;
+    let at = |i: usize| [src[i * 4], src[i * 4 + 1], src[i * 4 + 2], src[i * 4 + 3]];
+    let start = at(y as usize * w + x as usize);
+    let tol = tolerance as i32;
+    let close = |c: [u8; 4]| (c[3] == 0 && start[3] == 0) || (0..4).all(|k| (c[k] as i32 - start[k] as i32).abs() <= tol);
+    if !contiguous {
+        for (i, o) in out.iter_mut().enumerate() {
+            if close(at(i)) {
+                *o = 255;
+            }
+        }
+        return out;
+    }
+    let mut stack = vec![(x as usize, y as usize)];
+    while let Some((sx, sy)) = stack.pop() {
+        let i = sy * w + sx;
+        if out[i] != 0 || !close(at(i)) {
+            continue;
+        }
+        let mut l = sx;
+        while l > 0 && out[sy * w + l - 1] == 0 && close(at(sy * w + l - 1)) {
+            l -= 1;
+        }
+        let mut r = sx;
+        while r + 1 < w && out[sy * w + r + 1] == 0 && close(at(sy * w + r + 1)) {
+            r += 1;
+        }
+        for xx in l..=r {
+            out[sy * w + xx] = 255;
+            if sy > 0 && out[(sy - 1) * w + xx] == 0 {
+                stack.push((xx, sy - 1));
+            }
+            if sy + 1 < h && out[(sy + 1) * w + xx] == 0 {
+                stack.push((xx, sy + 1));
+            }
+        }
+    }
+    out
+}
+
+/// How a new selection joins the one there is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SelOp {
+    Replace,
+    Add,
+    Subtract,
+}
+
+/// Join a new selection mask to the old one.
+pub fn combine_masks(old: &[u8], new: &[u8], op: SelOp) -> Vec<u8> {
+    match op {
+        SelOp::Replace => new.to_vec(),
+        SelOp::Add => old.iter().zip(new).map(|(a, b)| *a.max(b)).collect(),
+        SelOp::Subtract => old.iter().zip(new).map(|(a, b)| (*a).min(255 - *b)).collect(),
+    }
+}
+
+/// Keep a change only as much as the selection mask allows: the pixels of `u` become a mix of
+/// before and after by the mask, on the layer and in the undo step.
+pub fn mask_undo(doc: &mut Doc, u: Option<Undo>, mask: &[u8]) -> Option<Undo> {
+    let Some(Undo::Pixels { layer, rect, before, mut after }) = u else { return u };
+    let w = doc.w;
+    let px = &mut doc.layers[layer].px;
+    for y in rect.y0..rect.y1 {
+        for x in rect.x0..rect.x1 {
+            let m = mask[(y * w + x) as usize];
+            if m == 255 {
+                continue;
+            }
+            let k = (((y - rect.y0) * rect.width() + (x - rect.x0)) * 4) as usize;
+            let t = m as f32 / 255.0;
+            let (ba, aa) = (before[k + 3] as f32, after[k + 3] as f32);
+            let oa = ba + (aa - ba) * t;
+            for c in 0..3 {
+                let v = if oa > 0.0 { (before[k + c] as f32 * ba + (after[k + c] as f32 * aa - before[k + c] as f32 * ba) * t) / oa } else { 0.0 };
+                after[k + c] = v.round().clamp(0.0, 255.0) as u8;
+            }
+            after[k + 3] = oa.round().clamp(0.0, 255.0) as u8;
+            let d = ((y * w + x) * 4) as usize;
+            px[d..d + 4].copy_from_slice(&after[k..k + 4]);
+        }
+    }
+    if before == after {
+        return None;
+    }
+    Some(Undo::Pixels { layer, rect, before, after })
+}
+
+/// One edge of a selection outline, from one canvas corner to another.
+pub type Segment = ((u32, u32), (u32, u32));
+
+/// The outline of a selection mask (at 50%), as canvas-space segments; `None` when there would
+/// be more than `max` of them.
+pub fn mask_outline(mask: &[u8], w: u32, h: u32, max: usize) -> Option<Vec<Segment>> {
+    let on = |x: i64, y: i64| x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h && mask[(y as u32 * w + x as u32) as usize] >= 128;
+    let mut segs = Vec::new();
+    // horizontal edges between rows y-1 and y
+    for y in 0..=h as i64 {
+        let mut run: Option<u32> = None;
+        for x in 0..=w as i64 {
+            let edge = x < w as i64 && on(x, y - 1) != on(x, y);
+            match (edge, run) {
+                (true, None) => run = Some(x as u32),
+                (false, Some(x0)) => {
+                    segs.push(((x0, y as u32), (x as u32, y as u32)));
+                    run = None;
+                }
+                _ => {}
+            }
+        }
+        if segs.len() > max {
+            return None;
+        }
+    }
+    for x in 0..=w as i64 {
+        let mut run: Option<u32> = None;
+        for y in 0..=h as i64 {
+            let edge = y < h as i64 && on(x - 1, y) != on(x, y);
+            match (edge, run) {
+                (true, None) => run = Some(y as u32),
+                (false, Some(y0)) => {
+                    segs.push(((x as u32, y0), (x as u32, y as u32)));
+                    run = None;
+                }
+                _ => {}
+            }
+        }
+        if segs.len() > max {
+            return None;
+        }
+    }
+    Some(segs)
+}
+
+// ---------- Filters and adjustments ----------
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Filter {
+    /// Gaussian-like blur of this radius.
+    Blur(f32),
+    /// Unsharp mask: amount (0..3), radius.
+    Sharpen(f32, f32),
+    /// Brightness and contrast, -1..1 each.
+    BrightnessContrast(f32, f32),
+    /// Hue (degrees), saturation and lightness (-1..1).
+    HueSaturation(f32, f32, f32),
+    Invert,
+    Desaturate,
+}
+
+impl Filter {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Filter::Blur(_) => "Blur",
+            Filter::Sharpen(..) => "Sharpen",
+            Filter::BrightnessContrast(..) => "Brightness / Contrast",
+            Filter::HueSaturation(..) => "Hue / Saturation",
+            Filter::Invert => "Invert Colours",
+            Filter::Desaturate => "Black and White",
+        }
+    }
+}
+
+/// Three box blurs over premultiplied RGBA (`pw` × `ph`), about a Gaussian of this radius.
+fn blur_premul(buf: &mut [f32], pw: usize, ph: usize, radius: f32) {
+    let r = ((radius * radius / 3.0 + 1.0).sqrt() - 1.0).max(0.0).round() as usize + if radius >= 1.0 { 1 } else { 0 };
+    if r == 0 {
+        return;
+    }
+    let mut tmp = vec![0f32; buf.len()];
+    for _ in 0..3 {
+        // horizontal
+        for y in 0..ph {
+            for c in 0..4 {
+                let mut sum = 0f32;
+                let at = |x: i64| buf[(y * pw + x.clamp(0, pw as i64 - 1) as usize) * 4 + c];
+                for k in -(r as i64)..=r as i64 {
+                    sum += at(k);
+                }
+                for x in 0..pw {
+                    tmp[(y * pw + x) * 4 + c] = sum / (2 * r + 1) as f32;
+                    sum += at(x as i64 + r as i64 + 1) - at(x as i64 - r as i64);
+                }
+            }
+        }
+        // vertical
+        for x in 0..pw {
+            for c in 0..4 {
+                let mut sum = 0f32;
+                let at = |y: i64| tmp[(y.clamp(0, ph as i64 - 1) as usize * pw + x) * 4 + c];
+                for k in -(r as i64)..=r as i64 {
+                    sum += at(k);
+                }
+                for y in 0..ph {
+                    buf[(y * pw + x) * 4 + c] = sum / (2 * r + 1) as f32;
+                    sum += at(y as i64 + r as i64 + 1) - at(y as i64 - r as i64);
+                }
+            }
+        }
+    }
+}
+
+fn rgb_to_hsl(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
+    let (mx, mn) = (r.max(g).max(b), r.min(g).min(b));
+    let l = (mx + mn) / 2.0;
+    if mx == mn {
+        return (0.0, 0.0, l);
+    }
+    let d = mx - mn;
+    let s = if l > 0.5 { d / (2.0 - mx - mn) } else { d / (mx + mn) };
+    let h = if mx == r {
+        (g - b) / d + if g < b { 6.0 } else { 0.0 }
+    } else if mx == g {
+        (b - r) / d + 2.0
+    } else {
+        (r - g) / d + 4.0
+    };
+    (h / 6.0, s, l)
+}
+
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
+    if s <= 0.0 {
+        return (l, l, l);
+    }
+    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let p = 2.0 * l - q;
+    let f = |mut t: f32| {
+        t = t.rem_euclid(1.0);
+        if t < 1.0 / 6.0 {
+            p + (q - p) * 6.0 * t
+        } else if t < 0.5 {
+            q
+        } else if t < 2.0 / 3.0 {
+            p + (q - p) * (2.0 / 3.0 - t) * 6.0
+        } else {
+            p
+        }
+    };
+    (f(h + 1.0 / 3.0), f(h), f(h - 1.0 / 3.0))
+}
+
+/// Apply a filter to a region of a layer, without an undo step (the caller keeps the pixels
+/// from before). Reads `src` (the layer as it was), writes the layer.
+pub fn filter_region(doc: &mut Doc, layer: usize, f: Filter, r: IRect, src: &[u8]) {
+    let r = r.intersect(doc.full());
+    if r.is_empty() {
+        return;
+    }
+    let w = doc.w;
+    let px = &mut doc.layers[layer].px;
+    match f {
+        Filter::Blur(radius) | Filter::Sharpen(_, radius) => {
+            let pad = (radius * 3.0).ceil() as u32 + 2;
+            let e = IRect { x0: r.x0.saturating_sub(pad), y0: r.y0.saturating_sub(pad), x1: (r.x1 + pad).min(doc.w), y1: (r.y1 + pad).min(doc.h) };
+            let (pw, ph) = (e.width() as usize, e.height() as usize);
+            let mut buf = vec![0f32; pw * ph * 4];
+            for y in 0..ph {
+                for x in 0..pw {
+                    let k = (((e.y0 as usize + y) * w as usize) + e.x0 as usize + x) * 4;
+                    let a = src[k + 3] as f32 / 255.0;
+                    let o = (y * pw + x) * 4;
+                    for c in 0..3 {
+                        buf[o + c] = src[k + c] as f32 / 255.0 * a;
+                    }
+                    buf[o + 3] = a;
+                }
+            }
+            blur_premul(&mut buf, pw, ph, radius);
+            for y in r.y0..r.y1 {
+                for x in r.x0..r.x1 {
+                    let o = (((y - e.y0) as usize * pw) + (x - e.x0) as usize) * 4;
+                    let k = ((y * w + x) * 4) as usize;
+                    let mut v = [buf[o], buf[o + 1], buf[o + 2], buf[o + 3]];
+                    if let Filter::Sharpen(amount, _) = f {
+                        let a0 = src[k + 3] as f32 / 255.0;
+                        let orig = [src[k] as f32 / 255.0 * a0, src[k + 1] as f32 / 255.0 * a0, src[k + 2] as f32 / 255.0 * a0, a0];
+                        for c in 0..4 {
+                            v[c] = orig[c] + (orig[c] - v[c]) * amount;
+                        }
+                        v[3] = v[3].clamp(0.0, 1.0);
+                        for c in 0..3 {
+                            v[c] = v[c].clamp(0.0, v[3]);
+                        }
+                    }
+                    let a = v[3].clamp(0.0, 1.0);
+                    for c in 0..3 {
+                        px[k + c] = if a > 0.0 { (v[c] / a * 255.0).round().clamp(0.0, 255.0) as u8 } else { 0 };
+                    }
+                    px[k + 3] = (a * 255.0).round() as u8;
+                }
+            }
+        }
+        _ => {
+            for y in r.y0..r.y1 {
+                for x in r.x0..r.x1 {
+                    let k = ((y * w + x) * 4) as usize;
+                    let (mut cr, mut cg, mut cb) = (src[k] as f32 / 255.0, src[k + 1] as f32 / 255.0, src[k + 2] as f32 / 255.0);
+                    match f {
+                        Filter::BrightnessContrast(b, c) => {
+                            let k2 = if c >= 0.0 { 1.0 / (1.0 - c * 0.99) } else { 1.0 + c };
+                            let adj = |v: f32| ((v - 0.5) * k2 + 0.5 + b * 0.5).clamp(0.0, 1.0);
+                            (cr, cg, cb) = (adj(cr), adj(cg), adj(cb));
+                        }
+                        Filter::HueSaturation(hd, sa, li) => {
+                            let (h, s, l) = rgb_to_hsl(cr, cg, cb);
+                            let s = (s * (1.0 + sa)).clamp(0.0, 1.0);
+                            let l = if li >= 0.0 { l + (1.0 - l) * li } else { l * (1.0 + li) };
+                            (cr, cg, cb) = hsl_to_rgb(h + hd / 360.0, s, l.clamp(0.0, 1.0));
+                        }
+                        Filter::Invert => (cr, cg, cb) = (1.0 - cr, 1.0 - cg, 1.0 - cb),
+                        Filter::Desaturate => {
+                            let l = 0.2126 * cr + 0.7152 * cg + 0.0722 * cb;
+                            (cr, cg, cb) = (l, l, l);
+                        }
+                        _ => {}
+                    }
+                    px[k] = (cr * 255.0).round() as u8;
+                    px[k + 1] = (cg * 255.0).round() as u8;
+                    px[k + 2] = (cb * 255.0).round() as u8;
+                    px[k + 3] = src[k + 3];
+                }
+            }
+        }
+    }
 }
 
 /// A whole-document transform.
@@ -1107,7 +1527,7 @@ mod tests {
         // moving a region and undoing it
         let mut d = Doc::new(10, 10, None, "", "L");
         d.layers[0].px[0..4].copy_from_slice(&[9, 9, 9, 255]);
-        let mut m = Moving::begin(&mut d, 0, IRect { x0: 0, y0: 0, x1: 2, y1: 2 });
+        let mut m = Moving::begin(&mut d, 0, IRect { x0: 0, y0: 0, x1: 2, y1: 2 }, None);
         m.place(&mut d, 5, 3);
         let u = m.end(&d).unwrap();
         assert_eq!(d.layers[0].px[3], 0);
@@ -1129,5 +1549,57 @@ mod tests {
             stroke_path(&mut d, 0, b, &[(10.0, 20.0), (30.0, 20.0)], None);
             assert!(d.layers[0].px.chunks_exact(4).any(|p| p[3] > 0), "{tip:?}");
         }
+    }
+
+    #[test]
+    fn shaped_selections_and_filters() {
+        // a triangle lasso covers about half its box
+        let m = polygon_mask(&[(0.0, 0.0), (20.0, 0.0), (0.0, 20.0)], 20, 20);
+        let sum: u32 = m.iter().map(|&v| v as u32).sum();
+        assert!((sum as f32 / 255.0 - 200.0).abs() < 4.0, "{}", sum as f32 / 255.0);
+        assert_eq!(mask_bounds(&m, 20, 20), IRect { x0: 0, y0: 0, x1: 20, y1: 20 });
+        // the wand picks the red square only
+        let mut d = Doc::new(10, 10, None, "", "L");
+        for y in 2..5 {
+            for x in 2..5 {
+                let k = ((y * 10 + x) * 4) as usize;
+                d.layers[0].px[k..k + 4].copy_from_slice(&[255, 0, 0, 255]);
+            }
+        }
+        let w = wand_mask(&d, 0, 3, 3, 10, true);
+        assert_eq!(w.iter().filter(|&&v| v == 255).count(), 9);
+        let o = mask_outline(&w, 10, 10, 1000).unwrap();
+        assert_eq!(o.len(), 4);
+        // a fill masked by the selection stays inside it
+        let full = d.full();
+        let u = clear_rect(&mut d, 0, full);
+        let u = mask_undo(&mut d, u, &w);
+        assert!(u.is_some());
+        assert_eq!(d.layers[0].px[((3 * 10 + 3) * 4 + 3) as usize], 0);
+        // subtracting leaves nothing
+        assert!(combine_masks(&w, &w, SelOp::Subtract).iter().all(|&v| v == 0));
+        // moving only the selected part
+        let mut d = Doc::new(4, 1, None, "", "L");
+        d.layers[0].px.copy_from_slice(&[9, 9, 9, 255, 8, 8, 8, 255, 0, 0, 0, 0, 0, 0, 0, 0]);
+        let sel = rect_mask(IRect { x0: 0, y0: 0, x1: 1, y1: 1 }, 4, 1);
+        let mut mv = Moving::begin(&mut d, 0, IRect { x0: 0, y0: 0, x1: 2, y1: 1 }, Some(&sel));
+        mv.place(&mut d, 2, 0);
+        assert!(mv.end(&d).is_some());
+        assert_eq!(&d.layers[0].px[4..8], &[8, 8, 8, 255]);
+        assert_eq!(&d.layers[0].px[8..12], &[9, 9, 9, 255]);
+        // filters
+        let mut d = Doc::new(9, 9, Some([0, 0, 0, 255]), "", "L");
+        d.layers[0].px[((4 * 9 + 4) * 4) as usize] = 255;
+        let src = d.layers[0].px.clone();
+        let full = d.full();
+        filter_region(&mut d, 0, Filter::Blur(2.0), full, &src);
+        assert!(d.layers[0].px[((4 * 9 + 4) * 4) as usize] < 200);
+        assert!(d.layers[0].px[((4 * 9 + 5) * 4) as usize] > 0);
+        let src = d.layers[0].px.clone();
+        filter_region(&mut d, 0, Filter::Invert, full, &src);
+        assert_eq!(d.layers[0].px[1], 255);
+        let (h, s2, l) = rgb_to_hsl(1.0, 0.0, 0.0);
+        let (r, g, b) = hsl_to_rgb(h, s2, l);
+        assert!((r - 1.0).abs() < 1e-4 && g.abs() < 1e-4 && b.abs() < 1e-4);
     }
 }
