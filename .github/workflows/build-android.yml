@@ -118,6 +118,8 @@ jobs:
         shell: bash
         run: |
           set -e
+          # the file types this app opens from other apps ("Open with…", sharing)
+          python3 ../extra/android_filters.py "${{ matrix.app }}" app/src/main/AndroidManifest.xml
           gradle --no-daemon assembleDebug -PcoId="${{ matrix.app }}" -PcoName="${{ matrix.name }}" -PcoPort="${{ matrix.port }}" \
             -PcoVersion="1.0.${{ github.run_number }}" -PcoCode="${{ github.run_number }}"
           mkdir -p ../out
