@@ -71,7 +71,7 @@ jobs:
         include:
           - { app: wordcraft,      src: tar:wordcraft-main }
           - { app: gridcraft,      src: tar:gridcraft-main }
-          - { app: pdfcraft,       src: git:b503b2e62dfeec5598f344e4e287d9c9cbdb34fa, i18n: 575cfdef63227b14daf173b8cc87928bfdfa325e }
+          - { app: pdfcraft,       src: git:9b3e6d6f38de906c758d93e8ece45cbf105fd515, i18n: 866aff71dd63d8369eb100b9c432b5af1400c22a }
           - { app: photocraft,     src: git:45066c48292e92229ada3459a83453439514c83d, i18n: e02939ef009218e81c44e8ec001fbb7603461de4 }
           - { app: deckcraft,      src: git:7cc73ab1895ed2e30c8afbcada20c70b9ea0a440 }
           - { app: designcraft,    src: git:33a467872268c98536231491865b4011b0275b17 }
@@ -85,7 +85,7 @@ jobs:
           - { app: cadcraft,       src: git:7526dc62c14e71b3c8d46e73bbf1fa29ef506af1 }
           - { app: materialcraft,  src: git:65f7bfd3e5f40d695d03162285879f0f8079ff6c }
           - { app: texturecraft,   src: git:34a196190fe2daa2f43017a0f32b254cca4836f2 }
-          - { app: craft-anything, src: git:48a9c5a60ff83ff620f98661339be6281a7debc6 }
+          - { app: craft-anything, src: git:3d5eb2577397ac632fb6dfffd94aa9787ad17acc }
     steps:
       - name: Git settings
         if: ${{ !inputs.only || inputs.only == matrix.app }}
