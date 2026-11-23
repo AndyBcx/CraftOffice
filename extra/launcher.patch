@@ -24,8 +24,47 @@ index 830ae6d..8bb99a6 100644
  ];
  
  /// A gépen talált, a katalógusban nem szereplő *craft appok (pl. egy új Craft alkalmazás).
+diff --git a/src/download.rs b/src/download.rs
+index 9c06db4..d6e9595 100644
+--- a/src/download.rs
++++ b/src/download.rs
+@@ -201,6 +201,34 @@ pub fn spawn_check(app: &'static AppDef, tx: Sender<Msg>, ctx: egui::Context) {
+     });
+ }
+ 
++/// A CraftOffice csomag verziója: a repó VERSION fájlja (a build is ezt írja az appok névjegyébe).
++pub const SUITE_VERSION: &str = include_str!("../../VERSION");
++
++pub fn suite_version() -> &'static str {
++    SUITE_VERSION.trim()
++}
++
++/// Hol készül az új CraftOffice (GitHub Actions: a „craftoffice-windows-x64” csomag).
++pub const SUITE_PAGE: &str = "https://github.com/AndyBcx/CraftOffice/actions";
++
++/// A CraftOffice legújabb verziója a GitHubon (háttérszálon) → `Msg::Latest("craftoffice", …)`.
++pub fn spawn_check_suite(tx: Sender<Msg>, ctx: egui::Context) {
++    std::thread::spawn(move || {
++        let url = "https://raw.githubusercontent.com/AndyBcx/CraftOffice/main/VERSION";
++        match http_get(url, None, false) {
++            Ok(b) => {
++                let v = String::from_utf8_lossy(&b).trim().to_string();
++                if !v.is_empty() && v.len() < 32 && v.chars().all(|c| c.is_ascii_alphanumeric() || ".-+".contains(c)) {
++                    log(&format!("CraftOffice: legújabb {v}, ez {}", suite_version()));
++                    let _ = tx.send(Msg::Latest("craftoffice", v));
++                    ctx.request_repaint();
++                }
++            }
++            Err(e) => log(&format!("CraftOffice verzió: {e}")),
++        }
++    });
++}
++
+ /// Letöltés és kicsomagolás a `dest` mappába (háttérszálon).
+ pub fn spawn_install(app: &'static AppDef, dest: PathBuf, tx: Sender<Msg>, ctx: egui::Context) {
+     std::thread::spawn(move || {
 diff --git a/src/ui.rs b/src/ui.rs
-index b63fbd6..cc6408a 100644
+index b63fbd6..95dbec0 100644
 --- a/src/ui.rs
 +++ b/src/ui.rs
 @@ -346,6 +346,12 @@ pub fn paint_glyph(painter: &egui::Painter, r: Rect, kind: &str, col: Color32, b
@@ -41,3 +80,119 @@ index b63fbd6..cc6408a 100644
          "vormantis" => {
              // izometrikus kocka
              let top = vec![p(12.0, 3.5), p(19.5, 7.8), p(12.0, 12.0), p(4.5, 7.8)];
+@@ -555,6 +561,7 @@ impl OfficeApp {
+     }
+ 
+     fn check_updates(&mut self) {
++        download::spawn_check_suite(self.tx.clone(), self.ctx.clone());
+         for app in apps::all().into_iter().filter(|a| a.core || self.installed.contains_key(a.id)) {
+             download::spawn_check(app, self.tx.clone(), self.ctx.clone());
+         }
+@@ -663,6 +670,9 @@ impl OfficeApp {
+                     self.notify(format!("{name}: {e}"), true);
+                 }
+                 Msg::Latest(id, v) => {
++                    if id == "craftoffice" && apps::version_newer(&v, download::suite_version()) && !self.latest.contains_key(id) {
++                        self.notify(format!("Új CraftOffice érhető el: v{v} (most: v{})", download::suite_version()), false);
++                    }
+                     self.latest.insert(id, v);
+                 }
+             }
+@@ -686,6 +696,16 @@ impl OfficeApp {
+         }
+     }
+ 
++    /// Újabb CraftOffice a GitHubon, ha van.
++    fn suite_update(&self) -> Option<&String> {
++        self.latest.get("craftoffice").filter(|v| apps::version_newer(v, download::suite_version()))
++    }
++
++    /// Hány telepített appnak van újabb kiadása.
++    fn app_updates(&self) -> usize {
++        self.installed.keys().filter(|id| self.update_available(id).is_some()).count()
++    }
++
+     fn update_available(&self, id: &str) -> Option<&String> {
+         let latest = self.latest.get(id)?;
+         let inst = self.installed.get(id)?;
+@@ -723,10 +743,29 @@ impl OfficeApp {
+         ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
+             ui.add_space(4.0);
+             ui.label(
+-                RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
++                RichText::new(format!("v{}", download::suite_version()))
+                     .size(11.0)
+                     .color(p.rail_text.gamma_multiply(0.55)),
+             );
++            // frissítés jelzése: új CraftOffice, illetve appok újabb kiadásai
++            if let Some(v) = self.suite_update().cloned() {
++                if ui
++                    .add(egui::Button::new(RichText::new(format!("● Új: v{v}")).size(12.0).color(GOLD)).frame(false))
++                    .on_hover_text(format!("Új CraftOffice érhető el (most: v{}). Kattints a letöltés oldalához.", download::suite_version()))
++                    .clicked()
++                {
++                    apps::open_url(download::SUITE_PAGE);
++                }
++            }
++            let n = self.app_updates();
++            if n > 0
++                && ui
++                    .add(egui::Button::new(RichText::new(format!("● {n} app frissíthető")).size(12.0).color(GOLD)).frame(false))
++                    .on_hover_text("Az Alkalmazások oldalon frissítheted őket")
++                    .clicked()
++            {
++                self.page = Page::Apps;
++            }
+             if nav_item(ui, &p, "settings", "Beállítások", self.page == Page::Settings) {
+                 self.page = Page::Settings;
+             }
+@@ -1562,8 +1601,48 @@ impl OfficeApp {
+             self.cfg.save();
+         }
+ 
++        if ui.button("Keresés most").clicked() {
++            self.check_updates();
++            self.notify("Frissítések keresése…", false);
++        }
++
+         Self::section_title(ui, "Névjegy");
+-        ui.label(format!("CraftOffice v{} – saját irodai és kreatív csomag a Craft alkalmazásokra építve.", env!("CARGO_PKG_VERSION")));
++        ui.label(format!("CraftOffice v{} – saját irodai és kreatív csomag a Craft alkalmazásokra építve.", download::suite_version()));
++        match self.suite_update().cloned() {
++            Some(v) => {
++                ui.horizontal(|ui| {
++                    ui.label(RichText::new(format!("Új verzió érhető el: v{v}")).color(GOLD).strong());
++                    if ui.link("Letöltés oldala").clicked() {
++                        apps::open_url(download::SUITE_PAGE);
++                    }
++                });
++            }
++            None if self.latest.contains_key("craftoffice") => {
++                ui.label(RichText::new("Ez a legújabb CraftOffice.").color(p.sub).size(12.5));
++            }
++            None => {}
++        }
++        ui.label(
++            RichText::new(
++                "Minden app névjegyében a saját verziója mellett a CraftOffice verziója is látszik \
++                 (pl. „Verzió 0.19.0 · CraftOffice 2.0.0”).",
++            )
++            .color(p.sub)
++            .size(12.5),
++        );
++        // az appok verziói egy helyen
++        egui::Grid::new("about_versions").num_columns(3).spacing(vec2(14.0, 3.0)).show(ui, |ui| {
++            for app in apps::all() {
++                let Some(i) = self.installed.get(app.id) else { continue };
++                ui.label(RichText::new(app.name).size(12.5));
++                ui.label(RichText::new(i.version.clone().map(|v| format!("v{v}")).unwrap_or_else(|| "–".into())).size(12.5).color(p.sub));
++                match self.update_available(app.id) {
++                    Some(v) => ui.label(RichText::new(format!("frissíthető: v{v}")).size(12.5).color(GOLD)),
++                    None => ui.label(""),
++                };
++                ui.end_row();
++            }
++        });
+         ui.label(
+             RichText::new(
+                 "A csomag alkalmazásai az ArtCraft csapat nyílt forrású (MIT / Apache-2.0) Craft alkalmazásai \
