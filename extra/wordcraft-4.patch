@@ -1,0 +1,128 @@
+diff --git a/crates/engine/src/langdata.rs b/crates/engine/src/langdata.rs
+index c04b0f5..c3271d2 100644
+--- a/crates/engine/src/langdata.rs
++++ b/crates/engine/src/langdata.rs
+@@ -85,6 +85,26 @@ fn find_file(prefixes: &[String]) -> Option<PathBuf> {
+     None
+ }
+ 
++/// CraftOffice: the browser (and Android) build has no dictionaries folder to read, so its
++/// Hungarian and Romanian thesaurus and AutoCorrect lists are built in (LibreOffice's,
++/// zlib-compressed by the web build into `craftoffice_langdata/`).
++#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
++const BUILT_IN: &[(&str, &[u8])] = &[
++    ("th_hu", include_bytes!("craftoffice_langdata/th_hu.z")),
++    ("th_ro", include_bytes!("craftoffice_langdata/th_ro.z")),
++    ("acor_hu", include_bytes!("craftoffice_langdata/acor_hu.z")),
++    ("acor_ro", include_bytes!("craftoffice_langdata/acor_ro.z")),
++];
++#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
++const BUILT_IN: &[(&str, &[u8])] = &[];
++
++/// A built-in list (`th` or `acor`) for `lang`, unpacked.
++fn built_in(kind: &str, lang: &str) -> Option<Vec<u8>> {
++    let key = format!("{kind}_{lang}");
++    let (_, z) = BUILT_IN.iter().find(|(k, _)| *k == key)?;
++    miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(z, MAX_FILE as usize).ok()
++}
++
+ fn read_capped(path: &Path) -> Option<Vec<u8>> {
+     let len = std::fs::metadata(path).ok()?.len();
+     if len > MAX_FILE {
+@@ -114,13 +134,15 @@ pub fn autocorrect_for(tag: Option<&str>) -> Option<Arc<AutoCorrectList>> {
+     }
+     prefixes.push(format!("acor_{lang}."));
+     prefixes.push(format!("acor_{lang}"));
+-    let loaded = find_file(&prefixes).and_then(|p| {
+-        let r = load_autocorrect(&p);
+-        if r.is_none() {
+-            log::warn!("autocorrect: could not read {}", p.display());
+-        }
+-        r
+-    });
++    let loaded = find_file(&prefixes)
++        .and_then(|p| {
++            let r = load_autocorrect(&p);
++            if r.is_none() {
++                log::warn!("autocorrect: could not read {}", p.display());
++            }
++            r
++        })
++        .or_else(|| built_in("acor", &lang).and_then(|b| autocorrect_from(&b)));
+     let loaded = loaded.map(Arc::new);
+     AUTOCORRECT
+         .write()
+@@ -131,8 +153,11 @@ pub fn autocorrect_for(tag: Option<&str>) -> Option<Arc<AutoCorrectList>> {
+ }
+ 
+ fn load_autocorrect(path: &Path) -> Option<AutoCorrectList> {
+-    let data = read_capped(path)?;
+-    let members = unzip(&data)?;
++    autocorrect_from(&read_capped(path)?)
++}
++
++fn autocorrect_from(data: &[u8]) -> Option<AutoCorrectList> {
++    let members = unzip(data)?;
+     let get = |name: &str| members.iter().find(|(n, _)| n == name).map(|(_, b)| String::from_utf8_lossy(b).into_owned());
+     let mut list = AutoCorrectList::default();
+     if let Some(x) = get("DocumentList.xml") {
+@@ -152,10 +177,9 @@ fn load_autocorrect(path: &Path) -> Option<AutoCorrectList> {
+         list.word_exceptions = blocks(&x).filter_map(|a| attr(a, "abbreviated-name")).collect();
+     }
+     log::info!(
+-        "autocorrect: {} entries, {} sentence exceptions from {}",
++        "autocorrect: {} entries, {} sentence exceptions",
+         list.replacements.len(),
+-        list.sentence_exceptions.len(),
+-        path.display()
++        list.sentence_exceptions.len()
+     );
+     Some(list)
+ }
+@@ -275,11 +299,14 @@ fn thesaurus_for(lang: &str, region: Option<String>) -> Option<Arc<Synonyms>> {
+     }
+     prefixes.push(format!("th_{lang}_"));
+     prefixes.push(format!("th_{lang}"));
+-    let loaded = find_file(&prefixes).and_then(|p| read_capped(&p).map(|b| (p, b))).map(|(p, b)| {
+-        let t = parse_mythes(&b);
+-        log::info!("thesaurus: {} entries from {}", t.len(), p.display());
+-        Arc::new(t)
+-    });
++    let loaded = find_file(&prefixes)
++        .and_then(|p| read_capped(&p).map(|b| (p, b)))
++        .map(|(p, b)| {
++            let t = parse_mythes(&b);
++            log::info!("thesaurus: {} entries from {}", t.len(), p.display());
++            Arc::new(t)
++        })
++        .or_else(|| built_in("th", lang).map(|b| Arc::new(parse_mythes(&b))));
+     THESAURUS
+         .write()
+         .unwrap_or_else(PoisonError::into_inner)
+@@ -303,8 +330,16 @@ fn parse_mythes(bytes: &[u8]) -> Synonyms {
+         let mut syns = Vec::new();
+         for _ in 0..n.min(200) {
+             let Some(l) = lines.next() else { break };
++            // Hungarian name days ("(névnap)|03-01|Dávid|…") are not synonyms.
++            if l.starts_with("(névnap)") {
++                continue;
++            }
+             for s in l.split('|').skip(1) {
+                 let s = s.trim();
++                // antonyms ("≠ discontinuu")
++                if s.starts_with('≠') {
++                    continue;
++                }
+                 // "(antonym)"-style notes and empty fields are not words to offer.
+                 let s = s.split(" (").next().unwrap_or(s).trim();
+                 // vezető stílusjelölés: "(pop.) chipos", "(înv. și reg.) vederos"
+@@ -332,6 +367,9 @@ mod tests {
+         assert_eq!(t["sárcipő"], vec!["sárcipő", "kalocsni"]);
+         let r = parse_mythes("UTF-8\nfrumos|1\n(adj.)|estetic|(pop.) chipos|(înv. și reg.) vederos\n".as_bytes());
+         assert_eq!(r["frumos"], vec!["estetic", "chipos", "vederos"]);
++        let n = parse_mythes("UTF-8\nalbina|2\n(névnap)|03-01|Dávid\n|méhecske\nîncontinuu|1\n≠ discontinuu|întruna|mereu\n".as_bytes());
++        assert_eq!(n["albina"], vec!["méhecske"]);
++        assert_eq!(n["încontinuu"], vec!["întruna", "mereu"]);
+     }
+ 
+     #[test]

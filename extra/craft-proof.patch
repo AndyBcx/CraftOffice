@@ -1,7 +1,8 @@
 diff --git a/crates/proof/src/hunspell.rs b/crates/proof/src/hunspell.rs
+index 966ded7..94b01f6 100644
 --- a/crates/proof/src/hunspell.rs
 +++ b/crates/proof/src/hunspell.rs
-@@ -181,7 +181,47 @@
+@@ -181,7 +181,47 @@ pub fn candidates(names: &[&str]) -> Vec<(PathBuf, PathBuf)> {
      let lo = names.first().copied().map(lo_ext_dirs);
      let (dirs, system) = search_tiers(lo.as_deref());
      let (region_packs, other_packs) = crate::packs::spelling_dirs(names);
@@ -50,7 +51,7 @@ diff --git a/crates/proof/src/hunspell.rs b/crates/proof/src/hunspell.rs
  }
  
  /// [`candidates`] over the given folders.
-@@ -295,6 +335,11 @@
+@@ -295,6 +335,11 @@ pub(crate) fn read_capped(p: &Path) -> Result<Vec<u8>, String> {
  
  /// Read a Hunspell pair from disk (size-capped), decoded per the `.aff`'s `SET` line.
  pub fn load(aff: &Path, dic: &Path) -> Result<AffixDict, String> {
@@ -62,3 +63,53 @@ diff --git a/crates/proof/src/hunspell.rs b/crates/proof/src/hunspell.rs
      let (aff_text, dic_text) = decode(&read_capped(aff)?, &read_capped(dic)?)?;
      let source = format!("Hunspell dictionary {}", dic.display());
      AffixDict::from_hunspell(&aff_text, &dic_text, &[source.as_str()])
+diff --git a/crates/proof/src/packs.rs b/crates/proof/src/packs.rs
+index eebd406..7fe226e 100644
+--- a/crates/proof/src/packs.rs
++++ b/crates/proof/src/packs.rs
+@@ -560,6 +560,9 @@ fn hyphenation_locales(lang: ProofLang) -> Vec<String> {
+ /// after each change). A pack file that fails to load is reported by [`load_errors`] and the next
+ /// pack (or the embedded patterns) is used.
+ pub(crate) fn hyphenation(lang: ProofLang) -> Option<Arc<Patterns>> {
++    if let Some(p) = built_in_hyphenation(lang) {
++        return Some(p);
++    }
+     let changes = {
+         let s = read();
+         s.dir.as_ref()?;
+@@ -597,6 +600,35 @@ pub(crate) fn hyphenation(lang: ProofLang) -> Option<Arc<Patterns>> {
+     found
+ }
+ 
++/// CraftOffice: Hungarian and Romanian hyphenation built into the browser (and Android) build,
++/// which has no packs folder: LibreOffice's patterns as plain Liang patterns (the non-standard
++/// `ssz/sz=` ones left out), zlib-compressed by the web build.
++#[cfg(target_arch = "wasm32")]
++const BUILT_IN_HYPHENATION: &[(&str, &[u8])] =
++    &[("hu", include_bytes!("craftoffice_dicts/hyph_hu.pat.z")), ("ro", include_bytes!("craftoffice_dicts/hyph_ro.pat.z"))];
++#[cfg(not(target_arch = "wasm32"))]
++const BUILT_IN_HYPHENATION: &[(&str, &[u8])] = &[];
++
++fn built_in_hyphenation(lang: ProofLang) -> Option<Arc<Patterns>> {
++    static PARSED: std::sync::OnceLock<Vec<Option<Arc<Patterns>>>> = std::sync::OnceLock::new();
++    if BUILT_IN_HYPHENATION.is_empty() {
++        return None;
++    }
++    let locales = hyphenation_locales(lang);
++    let i = BUILT_IN_HYPHENATION.iter().position(|(l, _)| locales.iter().any(|x| x == l || x.split('-').next() == Some(l)))?;
++    let all = PARSED.get_or_init(|| {
++        BUILT_IN_HYPHENATION
++            .iter()
++            .map(|(_, z)| {
++                let raw = miniz_oxide::inflate::decompress_to_vec_zlib(z).ok()?;
++                let p = Patterns::parse(std::str::from_utf8(&raw).ok()?);
++                (!p.is_empty()).then(|| Arc::new(p))
++            })
++            .collect()
++    });
++    all.get(i).cloned().flatten()
++}
++
+ /// Estimated memory of `p`.
+ fn pattern_bytes(p: &Patterns) -> u64 {
+     (p.len() as u64).saturating_add(p.exception_count() as u64).saturating_mul(BYTES_PER_PATTERN)
