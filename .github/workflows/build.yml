@@ -108,6 +108,8 @@ jobs:
           fetch craft-fonts craft-fonts "$CRAFT_FONTS_REF"
           fetch egui egui-hook "$EGUI_REF"
           git -C egui-hook apply --whitespace=nowarn "$W/patches/egui.patch"
+          # one "About" for all apps: the CraftOffice version beside each app's own
+          PY=$(command -v python3 || command -v python); "$PY" extra/egui_about.py VERSION egui-hook/crates/egui/src/widget_text.rs egui-hook-036/src/widget_text.rs
           REF="${{ matrix.i18n }}"
           if [ -z "$REF" ]; then
             fetch craft-i18n craft-i18n "$I18N_REF"

@@ -67,6 +67,8 @@ jobs:
           tar xzf bundle/patches.tar.gz; tar xzf bundle/egui036.tar.gz
           fetch craft-fonts craft-fonts "$CRAFT_FONTS_REF"
           fetch egui egui-hook "$EGUI_REF"; git -C egui-hook apply --whitespace=nowarn "$W/patches/egui.patch"
+          # one "About" for all apps: the CraftOffice version beside each app's own
+          python3 extra/egui_about.py VERSION egui-hook/crates/egui/src/widget_text.rs egui-hook-036/src/widget_text.rs
           if [ -z "$I18" ]; then fetch craft-i18n craft-i18n "$I18N_REF"; git -C craft-i18n apply --whitespace=nowarn "$W/patches/craft-i18n.patch"
             if [ -f extra/craft-i18n.patch ]; then git -C craft-i18n apply --whitespace=nowarn "$W/extra/craft-i18n.patch"; fi
           else fetch craft-i18n craft-i18n "$I18"
