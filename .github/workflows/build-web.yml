@@ -19,6 +19,7 @@ env:
   TRUNK_VERSION: v0.21.14
   LO_DICT_REF: c0865a85eb67dc377f2cf8e8fe2c4fa9e53f0dcb
   PROOF_REF: 01315d9c92b5b0e69082d35ca56099461a1efd45
+  LO_CORE_REF: d9b2d316ec4d546f831415aa75514fa237f1fda4
   CARGO_TERM_COLOR: never
 
 jobs:
@@ -77,8 +78,8 @@ jobs:
           done
           find appsrc -name Cargo.toml -not -path "*/target/*" -print0 | xargs -0 sed -i "s#/home/claude/#$W/#g"
           if [ "$A" = wordcraft ]; then
-            # Writer in the browser: Hungarian and Romanian spelling built in (craft-proof with
-            # LibreOffice's dictionaries), and the common document fonts beside the page.
+            # Writer in the browser: Hungarian and Romanian spelling, hyphenation, thesaurus and
+            # AutoCorrect built in (LibreOffice's), and the common document fonts beside the page.
             fetch craft-libs craft-libs-proof "$PROOF_REF"
             git -C craft-libs-proof apply --whitespace=nowarn "$W/extra/craft-proof.patch"
             Z=craft-libs-proof/crates/proof/src/craftoffice_dicts; mkdir -p "$Z"
@@ -86,7 +87,9 @@ jobs:
               curl -fsSL "https://raw.githubusercontent.com/LibreOffice/dictionaries/$LO_DICT_REF/$f" \
                 | python3 -c "import sys, zlib; sys.stdout.buffer.write(zlib.compress(sys.stdin.buffer.read(), 9))" > "$Z/$(basename "$f").z"
             done
-            ls -la "$Z"
+            # hyphenation patterns (craft-proof), thesaurus and AutoCorrect lists (Writer's engine)
+            python3 extra/writer_langdata.py "$Z" appsrc/crates/engine/src/craftoffice_langdata
+            ls -la "$Z" appsrc/crates/engine/src/craftoffice_langdata
             perl -pi -e 's#^wordcraft-proof = \{.*#wordcraft-proof = { package = "craft-proof", path = "'"$W"'/craft-libs-proof/crates/proof" }#' appsrc/Cargo.toml
             grep -n "^wordcraft-proof" appsrc/Cargo.toml
             for p in fonts-liberation fonts-liberation2 fonts-crosextra-carlito fonts-crosextra-caladea fonts-dejavu-core fonts-dejavu-extra \
