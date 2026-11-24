@@ -1,0 +1,31 @@
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index 01933d0fe..6fb92685c 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -421,13 +421,6 @@ pub(crate) const PROMPTS: &[PromptRow] = &[
+     crate::jobs_ui::answer,
+     crate::gpu_status::answer,
+     crate::actions::library::answer,
+-            ui.add_space(6.0);
+-            ui.label(match crate::i18n::current().code() {
+-                "hu" => "CraftOffice-kiadás – AndyBcx: magyar és román felület.",
+-                "ro" => "Ediția CraftOffice de AndyBcx: interfață în maghiară și română.",
+-                _ => "CraftOffice edition by AndyBcx: Hungarian and Romanian interface.",
+-            }); // CraftOffice
+-            ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+ ];
+ 
+ /// [`prompts_take`] over the rows `rows`.
+diff --git a/crates/ui-egui/src/dialogs/credits.rs b/crates/ui-egui/src/dialogs/credits.rs
+index d3518b9f3..4b9fb60d7 100644
+--- a/crates/ui-egui/src/dialogs/credits.rs
++++ b/crates/ui-egui/src/dialogs/credits.rs
+@@ -88,6 +88,8 @@ fn about_info_for(identity: crate::os_window::LaunchIdentity, version: String, c
+         AboutLink::new(tl!("PhotoCraft website"), crate::links::APP_PAGE),
+         AboutLink::new(tl!("GitHub"), crate::links::GITHUB),
+         AboutLink::new(tl!("ArtCraft"), crate::links::ARTCRAFT_WEBSITE),
++        // CraftOffice
++        AboutLink::new("CraftOffice", "https://github.com/AndyBcx/CraftOffice"),
+     ];
+     if nightly {
+         // Opens only after a user click. No diagnostics, paths or documents are sent automatically.

@@ -1,11 +1,11 @@
 diff --git a/apps/soundcraft/src/craftoffice_i18n/hu.tsv b/apps/soundcraft/src/craftoffice_i18n/hu.tsv
-index a2fd42d..b1f70e6 100644
+index 221b4632..43b720f7 100644
 --- a/apps/soundcraft/src/craftoffice_i18n/hu.tsv
 +++ b/apps/soundcraft/src/craftoffice_i18n/hu.tsv
-@@ -1396,3 +1396,27 @@ movie missing from session	a film hiányzik a munkamenetből
- Surround pan: drag the puck · double-click: front centre · Alt-drag: divergence	Térhatású panoráma: húzd a pöcköt · dupla kattintás: elöl középre · Alt+húzás: divergencia
+@@ -1397,3 +1397,27 @@ Surround pan: drag the puck · double-click: front centre · Alt-drag: divergenc
  Divergence (0 = point source)	Divergencia (0 = pontforrás)
  Elevation (height speakers)	Magasság (magassági hangsugárzók)
+ CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	CraftOffice-kiadás – AndyBcx: magyar és román felület.
 +Batch Loudness Match	Kötegelt hangerő-kiegyenlítés
 +Batch Loudness Match…	Kötegelt hangerő-kiegyenlítés…
 +Brings every song to the same loudness. The originals stay as they are; the results go to another folder.	Minden dalt azonos hangerőre hoz. Az eredeti fájlok változatlanok maradnak, az eredmény egy másik mappába kerül.
@@ -31,13 +31,13 @@ index a2fd42d..b1f70e6 100644
 +Quieter, more headroom	Halkabb, több tartalék
 +Radio and TV (EBU R128)	Rádió és TV (EBU R128)
 diff --git a/apps/soundcraft/src/craftoffice_i18n/ro.tsv b/apps/soundcraft/src/craftoffice_i18n/ro.tsv
-index 5e2ce2b..4640e87 100644
+index 4d8c68e7..61e7fee3 100644
 --- a/apps/soundcraft/src/craftoffice_i18n/ro.tsv
 +++ b/apps/soundcraft/src/craftoffice_i18n/ro.tsv
-@@ -1396,3 +1396,27 @@ movie missing from session	filmul lipsește din sesiune
- Surround pan: drag the puck · double-click: front centre · Alt-drag: divergence	Panoramare surround: glisați cursorul · dublu clic: centru față · Alt-glisare: divergență
+@@ -1397,3 +1397,27 @@ Surround pan: drag the puck · double-click: front centre · Alt-drag: divergenc
  Divergence (0 = point source)	Divergență (0 = sursă punctiformă)
  Elevation (height speakers)	Elevație (difuzoare de înălțime)
+ CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
 +Batch Loudness Match	Egalizare loudness în lot
 +Batch Loudness Match…	Egalizare loudness în lot…
 +Brings every song to the same loudness. The originals stay as they are; the results go to another folder.	Aduce fiecare melodie la același volum perceput. Originalele rămân neschimbate; rezultatele merg într-un alt dosar.
@@ -63,7 +63,7 @@ index 5e2ce2b..4640e87 100644
 +Quieter, more headroom	Mai încet, mai multă rezervă
 +Radio and TV (EBU R128)	Radio și TV (EBU R128)
 diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
-index fe6feed..d0cec59 100644
+index fe6feed0..d0cec598 100644
 --- a/crates/ui-egui/src/app.rs
 +++ b/crates/ui-egui/src/app.rs
 @@ -356,6 +356,8 @@ impl SoundApp {
@@ -77,7 +77,7 @@ index fe6feed..d0cec59 100644
          // The pass that actually received the injected events has already dispatched their widget
 diff --git a/crates/ui-egui/src/craftoffice_batch.rs b/crates/ui-egui/src/craftoffice_batch.rs
 new file mode 100644
-index 0000000..b41f2ff
+index 00000000..b41f2ff0
 --- /dev/null
 +++ b/crates/ui-egui/src/craftoffice_batch.rs
 @@ -0,0 +1,550 @@
@@ -632,7 +632,7 @@ index 0000000..b41f2ff
 +    }
 +}
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index a93bd08..5da1f16 100644
+index a93bd084..5da1f164 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -17,6 +17,7 @@ pub mod aaf_import;
@@ -644,7 +644,7 @@ index a93bd08..5da1f16 100644
  pub mod dialogs;
  pub mod docking;
 diff --git a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
-index 12e3440..31f01ba 100644
+index 12e3440c..31f01ba2 100644
 --- a/crates/ui-egui/src/menus.rs
 +++ b/crates/ui-egui/src/menus.rs
 @@ -291,6 +291,10 @@ pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
@@ -658,3 +658,23 @@ index 12e3440..31f01ba 100644
                          ui.separator();
                          if ui.button(crate::localization::text("Quit")).clicked() {
                              let _ = crate::dialogs::run_or_ask(app, "app.quit", json!({}));
+diff --git a/crates/ui-egui/src/panels/about.rs b/crates/ui-egui/src/panels/about.rs
+index b5ea346b..47530cfd 100644
+--- a/crates/ui-egui/src/panels/about.rs
++++ b/crates/ui-egui/src/panels/about.rs
+@@ -33,12 +33,12 @@ pub(super) fn about(app: &mut SoundApp, ctx: &egui::Context) {
+                     ui.label(crate::localization::text("Dual-licensed MIT OR Apache-2.0. Made with Rust and egui."));
+                     ui.hyperlink_to("getartcraft.com/apps/soundcraft", "https://getartcraft.com/apps/soundcraft");
+                     ui.hyperlink_to(crate::localization::text("Join us on Discord"), "https://discord.gg/artcraft");
++                    ui.add_space(6.0);
++                    ui.label("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."); // CraftOffice
++                    ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+                 }
+             }
+         });
+-                ui.add_space(6.0);
+-                ui.label("CraftOffice edition by AndyBcx: Hungarian and Romanian interface."); // CraftOffice
+-                ui.hyperlink_to("CraftOffice: github.com/AndyBcx/CraftOffice", "https://github.com/AndyBcx/CraftOffice");
+     app.ui.show_about = open;
+ }
+ 

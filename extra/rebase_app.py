@@ -56,7 +56,7 @@ def resolve_text(path):
         s = f.read()
     if path.replace("\\", "/").endswith("Cargo.toml"):
         def cargo(m):
-            head, ours = m.group(1), m.group(2)
+            head, base, ours = m.group(1), m.group(2), m.group(3)
             hooked = {}
             for line in ours.splitlines(True):
                 if "egui-hook" in line:
@@ -70,8 +70,16 @@ def resolve_text(path):
                     # (extra/egui_hooks.py fetches and patches egui-hook-<rev>)
                     mine = mine.replace("/egui-hook/", f"/egui-hook-{rev.group(1)}/")
                 out.append(mine or line)
-            return "".join(out)
-        s = re.sub(r"<<<<<<< [^\n]*\n(.*?)\|\|\|\|\|\|\| [^\n]*\n.*?=======\n(.*?)>>>>>>> [^\n]*\n", cargo, s, flags=re.S)
+            # and the dependencies CraftOffice added (e.g. craft-offcrypto), unless ArtCraft has them
+            have = {l.split("=")[0].strip() for l in out if "=" in l}
+            # (dependency lines and their comments only: the hooked egui lines are handled above,
+            # and table headers stay ArtCraft's so no line lands under the wrong table)
+            added = "".join(l for l in ours.splitlines(True)
+                            if l.lstrip().startswith("#")
+                            or ("=" in l and not l.lstrip().startswith("[") and "egui-hook" not in l
+                                and l.split("=")[0].strip() not in have))
+            return merge_block("".join(out), base, added)
+        s = re.sub(r"<<<<<<< [^\n]*\n(.*?)\|\|\|\|\|\|\| [^\n]*\n(.*?)=======\n(.*?)>>>>>>> [^\n]*\n", cargo, s, flags=re.S)
     else:
         s = re.sub(r"<<<<<<< [^\n]*\n(.*?)\|\|\|\|\|\|\| [^\n]*\n(.*?)=======\n(.*?)>>>>>>> [^\n]*\n",
                    lambda m: merge_block(m.group(1), m.group(2), m.group(3)), s, flags=re.S)
@@ -81,6 +89,10 @@ def resolve_text(path):
 
 os.makedirs(d, exist_ok=True)
 git("init", "-q")
+# LF in the working tree on every platform (ArtCraft's .gitattributes says text=auto, which is CRLF on
+# Windows): the conflict resolution below and the extra patches then see the same text everywhere
+git("config", "core.autocrlf", "false")
+git("config", "core.eol", "lf")
 url = f"https://github.com/storytold/{app}.git"
 # the history between the two (no file contents until needed), for the replay
 git("fetch", "-q", "--filter=blob:none", url, new)
@@ -88,6 +100,19 @@ git("fetch", "-q", "--filter=blob:none", url, old)
 git("-c", "advice.detachedHead=false", "checkout", "-q", "-f", old)
 for p in patches:
     git("apply", "--whitespace=nowarn", p)
+# extra/<app>-N.patch files with N >= 2 are made on OLD too (the app's sources before the rebase):
+# applied here, so they are carried over with the rest, and renamed to *.on-old in this checkout so
+# the build's extra loop doesn't apply them a second time. extra/<app>-1.patch is made on the rebased
+# tree (fixups, new features) and stays for that loop.
+extra_dir = os.path.dirname(os.path.abspath(sys.argv[-1]))
+def _num(f):
+    m = re.fullmatch(re.escape(app) + r"-(\d+)\.patch", f)
+    return int(m.group(1)) if m and int(m.group(1)) >= 2 else None
+for f in sorted((f for f in os.listdir(extra_dir) if _num(f) is not None), key=_num):
+    full = os.path.join(extra_dir, f)
+    git("apply", "--whitespace=nowarn", full)
+    os.replace(full, full + ".on-old")
+    print(f"{app}: {f} applied on {old[:12]} and carried over")
 git("add", "-A")
 git("-c", "user.name=CraftOffice", "-c", "user.email=craftoffice@localhost", "-c", "commit.gpgsign=false",
     "commit", "-q", "--date=2000-01-01T00:00:00Z", "-m", "CraftOffice")
