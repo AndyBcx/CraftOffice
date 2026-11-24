@@ -77,8 +77,10 @@ jobs:
           case "$SRC" in
             tar:*) tar xzf "bundle/$A-src.tar.gz"; mv "${SRC#tar:}" appsrc ;;
             git:*) fetch "$A" appsrc "${SRC#git:}"; git -C appsrc apply --whitespace=nowarn "$W/patches/$A.patch" ;;
+            rebase:*) R="${SRC#rebase:}"; REBASED=1; python3 extra/rebase_app.py "$A" "${R%%:*}" "${R#*:}" appsrc "$W/patches/$A.patch" "$W/extra/$A.patch" ;;
           esac
           for P in "extra/$A.patch" extra/$A-[0-9]*.patch; do
+            if [ -n "${REBASED:-}" ] && [ "$P" = "extra/$A.patch" ]; then continue; fi
             if [ -f "$P" ]; then echo "extra: $P"; (cd appsrc && git apply --whitespace=nowarn "$W/$P"); fi
           done
           # AniCraft: a CraftOffice mod-sorok a belső attribútumok mögé
@@ -129,8 +131,29 @@ jobs:
           name: linux-dicts
           path: out/
 
+  tools:
+    # FFmpeg for Video › Compress Video (AV1 / H.265 / H.264 at constant visual quality), in the
+    # package's `tools` folder. BtbN's GPL build of the FFmpeg 8.1 release branch; only ffmpeg itself.
+    runs-on: ubuntu-latest
+    steps:
+      - name: FFmpeg
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out/tools
+          curl -fsSL -o ff.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz"
+          tar xJf ff.tar.xz
+          cp ffmpeg-*/bin/ffmpeg out/tools/
+          cp ffmpeg-*/LICENSE.txt out/tools/FFmpeg-LICENSE.txt 2>/dev/null || true
+          printf 'FFmpeg (https://ffmpeg.org), GPL build by BtbN (https://github.com/BtbN/FFmpeg-Builds), release 8.1.\nUsed by CraftOffice Video for Compress Video.\n' > out/tools/FFmpeg-README.txt
+          ls -la out/tools
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-tools
+          path: out/
+
   package-linux:
-    needs: [linux, dicts]
+    needs: [linux, dicts, tools]
     if: always()
     runs-on: ubuntu-latest
     steps:

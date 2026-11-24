@@ -74,8 +74,10 @@ jobs:
           case "$SRC" in
             tar:*) tar xzf "bundle/$A-src.tar.gz"; mv "${SRC#tar:}" appsrc ;;
             git:*) fetch "$A" appsrc "${SRC#git:}"; git -C appsrc apply --whitespace=nowarn "$W/patches/$A.patch" ;;
+            rebase:*) R="${SRC#rebase:}"; REBASED=1; python3 extra/rebase_app.py "$A" "${R%%:*}" "${R#*:}" appsrc "$W/patches/$A.patch" "$W/extra/$A.patch" ;;
           esac
           for P in "extra/$A.patch" extra/$A-[0-9]*.patch; do
+            if [ -n "${REBASED:-}" ] && [ "$P" = "extra/$A.patch" ]; then continue; fi
             if [ -f "$P" ]; then echo "extra: $P"; (cd appsrc && git apply --whitespace=nowarn "$W/$P"); fi
           done
           find appsrc -name Cargo.toml -not -path "*/target/*" -print0 | xargs -0 sed -i "s#/home/claude/#$W/#g"

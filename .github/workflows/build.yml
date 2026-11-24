@@ -78,9 +78,9 @@ jobs:
           - { app: designcraft,    src: git:33a467872268c98536231491865b4011b0275b17 }
           - { app: vectorcraft,    src: git:f4922aa7ac99a4f6d56fc68a83a44945207ec610 }
           - { app: lightcraft,     src: git:361e3bc0c838ffe5e5cea515b1fe5b71951989c6 }
-          - { app: filmcraft,      src: git:cedf0c9bd060eb06a977d532402be2097c9ebe42 }
+          - { app: filmcraft,      src: rebase:cedf0c9bd060eb06a977d532402be2097c9ebe42:ba6fe10529c7bf5d2a9283f9de2e35c0ccff926c }
           - { app: effectcraft,    src: git:582344dd4ef462362c02e56e3094de7af01847ab }
-          - { app: soundcraft,     src: git:a52bbdccbe15342f44e0de1906bf71a621e7a68f }
+          - { app: soundcraft,     src: rebase:a52bbdccbe15342f44e0de1906bf71a621e7a68f:7391fc7465b45f0159c8044a521d77b0a309de7f }
           - { app: anicraft,       src: git:d0beaf253274948b55ee9e1107749f9491bff880 }
           - { app: figcraft,       src: git:4acc293c2ec941ac1400837ee7e3ab51780399f8 }
           - { app: cadcraft,       src: git:7526dc62c14e71b3c8d46e73bbf1fa29ef506af1 }
@@ -125,9 +125,13 @@ jobs:
             tar:*) tar xzf "bundle/${{ matrix.app }}-src.tar.gz"; mv "${SRC#tar:}" appsrc ;;
             git:*) fetch "${{ matrix.app }}" appsrc "${SRC#git:}"
                    git -C appsrc apply --whitespace=nowarn "$W/patches/${{ matrix.app }}.patch" ;;
+            # a newer ArtCraft revision: CraftOffice's patch (made on the older one) carried over
+            rebase:*) R="${SRC#rebase:}"; REBASED=1
+                   "$PY" extra/rebase_app.py "${{ matrix.app }}" "${R%%:*}" "${R#*:}" appsrc "$W/patches/${{ matrix.app }}.patch" "$W/extra/${{ matrix.app }}.patch" ;;
           esac
-          # CraftOffice-bővítések (extra/<app>.patch)
+          # CraftOffice-bővítések (extra/<app>.patch; a rebased app has that one already)
           for P in "extra/${{ matrix.app }}.patch" extra/${{ matrix.app }}-[0-9]*.patch; do
+            if [ -n "${REBASED:-}" ] && [ "$P" = "extra/${{ matrix.app }}.patch" ]; then continue; fi
             if [ -f "$P" ]; then echo "extra: $P"; (cd appsrc && git apply --whitespace=nowarn "$W/$P"); fi
           done
           # AniCraft: a CraftOffice mod-sorok a belső attribútumok mögé
@@ -188,8 +192,29 @@ jobs:
           name: app-dicts
           path: out/
 
+  tools:
+    # FFmpeg for Video › Compress Video (AV1 / H.265 / H.264 at constant visual quality), in the
+    # package's `tools` folder. BtbN's GPL build of the FFmpeg 8.1 release branch; only ffmpeg itself.
+    runs-on: ubuntu-latest
+    steps:
+      - name: FFmpeg
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out/tools
+          curl -fsSL -o ff.zip "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-gpl-8.1.zip"
+          unzip -q ff.zip
+          cp ffmpeg-*/bin/ffmpeg.exe out/tools/
+          cp ffmpeg-*/LICENSE.txt out/tools/FFmpeg-LICENSE.txt 2>/dev/null || true
+          printf 'FFmpeg (https://ffmpeg.org), GPL build by BtbN (https://github.com/BtbN/FFmpeg-Builds), release 8.1.\nUsed by CraftOffice Video for Compress Video.\n' > out/tools/FFmpeg-README.txt
+          ls -la out/tools
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-tools
+          path: out/
+
   package:
-    needs: [launcher, sketch, app, dicts]
+    needs: [launcher, sketch, app, dicts, tools]
     if: always()
     runs-on: ubuntu-latest
     steps:
