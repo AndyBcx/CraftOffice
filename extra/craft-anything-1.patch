@@ -1,0 +1,10 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 36b03f5..0c69aa5 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -133,3 +133,5 @@ wgpu-hal = { path = "vendor/wgpu-hal" }
+ # winit with upstream's Windows 11 DPI-change fix (Craft Anything #1814; upstream winit #4041, #4341).
+ # Remove once eframe uses a winit with it. See vendor/winit/CRAFT_ANYTHING.md.
+ winit = { path = "vendor/winit" }
++# CraftOffice: egui with the text hook (names, translations, About line)
++egui = { path = "/home/claude/egui-hook-036" }

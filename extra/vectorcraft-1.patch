@@ -1,0 +1,150 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 193e5ed37..e814d2dff 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2526,7 +2526,6 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
+ [[package]]
+ name = "ecolor"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+ dependencies = [
+  "bytemuck",
+  "emath",
+@@ -2535,7 +2534,6 @@ dependencies = [
+ [[package]]
+ name = "eframe"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+ dependencies = [
+  "ahash",
+  "bytemuck",
+@@ -2570,7 +2568,6 @@ dependencies = [
+ [[package]]
+ name = "egui"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+ dependencies = [
+  "accesskit",
+  "ahash",
+@@ -2589,7 +2586,6 @@ dependencies = [
+ [[package]]
+ name = "egui-wgpu"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+ dependencies = [
+  "ahash",
+  "bytemuck",
+@@ -2608,7 +2604,6 @@ dependencies = [
+ [[package]]
+ name = "egui-winit"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+ dependencies = [
+  "accesskit_winit",
+  "arboard",
+@@ -2633,7 +2628,6 @@ dependencies = [
+ [[package]]
+ name = "egui_extras"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+ dependencies = [
+  "ahash",
+  "egui",
+@@ -2647,7 +2641,6 @@ dependencies = [
+ [[package]]
+ name = "egui_glow"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+ dependencies = [
+  "bytemuck",
+  "egui",
+@@ -2660,7 +2653,6 @@ dependencies = [
+ [[package]]
+ name = "egui_kittest"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+ dependencies = [
+  "dify",
+  "eframe",
+@@ -2686,7 +2678,6 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
+ [[package]]
+ name = "emath"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+ dependencies = [
+  "bytemuck",
+ ]
+@@ -2767,7 +2758,6 @@ dependencies = [
+ [[package]]
+ name = "epaint"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+ dependencies = [
+  "ahash",
+  "bytemuck",
+@@ -2793,7 +2783,6 @@ dependencies = [
+ [[package]]
+ name = "epaint_default_fonts"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+ 
+ [[package]]
+ name = "equivalent"
+@@ -8125,6 +8114,7 @@ dependencies = [
+  "rustix 1.1.6",
+  "serde_json",
+  "socket2",
++ "sys-locale",
+  "tempfile",
+  "vectorcraft-engine",
+  "vectorcraft-render",
+@@ -10280,14 +10270,11 @@ dependencies = [
+ [[patch.unused]]
+ name = "egui_demo_lib"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+ 
+ [[patch.unused]]
+ name = "egui_inspection"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+ 
+ [[patch.unused]]
+ name = "egui_system_font_provider"
+ version = "0.37.0"
+-source = "git+https://github.com/storytold/egui.git?rev=f5025284445ea19c35f746d96fc0b75468b3f560#f5025284445ea19c35f746d96fc0b75468b3f560"
+diff --git a/crates/ui-egui/src/i18n.rs b/crates/ui-egui/src/i18n.rs
+index 89f21a0ce..83858098d 100644
+--- a/crates/ui-egui/src/i18n.rs
++++ b/crates/ui-egui/src/i18n.rs
+@@ -69,28 +69,8 @@ static EMBEDDED: &Embedded = &[
+     ("fi", "", include_str!("i18n/fi.tsv")),
+     ("tr", "", include_str!("i18n/tr.tsv")),
+     ("ca", "", include_str!("i18n/ca.tsv")),
+-    // Romanian: the whole interface and the status and error messages, keeping the same names in
+-    // English as Hungarian, with one/few/other plurals ("1 strat", "3 straturi", "20 de
+-    // straturi"). An AI-assisted draft pending native review. Every `ro-*` locale (including
+-    // `ro-RO` and `ro-MD`) resolves here.
+-    LangInfo {
+-        code: "ro",
+-        name: "Română",
+-        source: include_str!("i18n/ro.tsv"),
+-        plural: plural_romanian,
+-        complete_menus: true,
+-        catalog: OnceLock::new(),
+-    },
+-/// Romanian integer counts: only 1 is `one`; 0 and a count ending in 01–19 (but not 1 itself) are
+-/// `few` ("3 straturi", "101 straturi"); everything else (20, 21, 100 …) `other` ("20 de straturi").
+-fn plural_romanian(n: u64) -> usize {
+-    match (n, n % 100) {
+-        (1, _) => 0,
+-        (0, _) | (_, 1..=19) => 1,
+-        _ => 2,
+-    }
+-}
+-
++    // Romanian (CraftOffice): the whole interface, one|few|other plurals; an AI-assisted draft pending native review
++    ("ro", "", include_str!("i18n/ro.tsv")),
+ ];
+ 
+ /// The codes of [`EMBEDDED`] the interface offers. Browsers cannot use the native installed-font
