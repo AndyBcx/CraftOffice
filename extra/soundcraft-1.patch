@@ -1,0 +1,660 @@
+diff --git a/apps/soundcraft/src/craftoffice_i18n/hu.tsv b/apps/soundcraft/src/craftoffice_i18n/hu.tsv
+index a2fd42d..b1f70e6 100644
+--- a/apps/soundcraft/src/craftoffice_i18n/hu.tsv
++++ b/apps/soundcraft/src/craftoffice_i18n/hu.tsv
+@@ -1396,3 +1396,27 @@ movie missing from session	a film hiányzik a munkamenetből
+ Surround pan: drag the puck · double-click: front centre · Alt-drag: divergence	Térhatású panoráma: húzd a pöcköt · dupla kattintás: elöl középre · Alt+húzás: divergencia
+ Divergence (0 = point source)	Divergencia (0 = pontforrás)
+ Elevation (height speakers)	Magasság (magassági hangsugárzók)
++Batch Loudness Match	Kötegelt hangerő-kiegyenlítés
++Batch Loudness Match…	Kötegelt hangerő-kiegyenlítés…
++Brings every song to the same loudness. The originals stay as they are; the results go to another folder.	Minden dalt azonos hangerőre hoz. Az eredeti fájlok változatlanok maradnak, az eredmény egy másik mappába kerül.
++Add Folder…	Mappa hozzáadása…
++Add Files…	Fájlok hozzáadása…
++Clear List	Lista törlése
++…or drop a folder or files here	…vagy húzz ide egy mappát vagy fájlokat
++Target loudness:	Célhangerő:
++Peak ceiling:	Csúcsérték-plafon:
++No song is made louder than this peak allows, so nothing clips.	Egyik dal sem lesz hangosabb, mint amit ez a csúcsérték enged, így semmi sem torzul.
++Save to:	Mentés ide:
++Choose…	Tallózás…
++Measure Only	Csak mérés
++Match Loudness	Kiegyenlítés
++peak	csúcs
++silent	csendes
++reaches	eléri:
++limited by its peak	a csúcsérték korlátozza
++the output folder must differ from the source	a célmappa nem lehet azonos a forrással
++saved as FLAC	FLAC-ként mentve
++Streaming (Spotify, YouTube, Tidal)	Streaming (Spotify, YouTube, Tidal)
++Apple Music, podcasts	Apple Music, podcastok
++Quieter, more headroom	Halkabb, több tartalék
++Radio and TV (EBU R128)	Rádió és TV (EBU R128)
+diff --git a/apps/soundcraft/src/craftoffice_i18n/ro.tsv b/apps/soundcraft/src/craftoffice_i18n/ro.tsv
+index 5e2ce2b..4640e87 100644
+--- a/apps/soundcraft/src/craftoffice_i18n/ro.tsv
++++ b/apps/soundcraft/src/craftoffice_i18n/ro.tsv
+@@ -1396,3 +1396,27 @@ movie missing from session	filmul lipsește din sesiune
+ Surround pan: drag the puck · double-click: front centre · Alt-drag: divergence	Panoramare surround: glisați cursorul · dublu clic: centru față · Alt-glisare: divergență
+ Divergence (0 = point source)	Divergență (0 = sursă punctiformă)
+ Elevation (height speakers)	Elevație (difuzoare de înălțime)
++Batch Loudness Match	Egalizare loudness în lot
++Batch Loudness Match…	Egalizare loudness în lot…
++Brings every song to the same loudness. The originals stay as they are; the results go to another folder.	Aduce fiecare melodie la același volum perceput. Originalele rămân neschimbate; rezultatele merg într-un alt dosar.
++Add Folder…	Adăugare dosar…
++Add Files…	Adăugare fișiere…
++Clear List	Golire listă
++…or drop a folder or files here	…sau trage aici un dosar sau fișiere
++Target loudness:	Volum țintă:
++Peak ceiling:	Plafon de vârf:
++No song is made louder than this peak allows, so nothing clips.	Nicio melodie nu devine mai tare decât permite acest vârf, deci nimic nu distorsionează.
++Save to:	Salvare în:
++Choose…	Alege…
++Measure Only	Doar măsurare
++Match Loudness	Egalizare
++peak	vârf
++silent	silențios
++reaches	atinge
++limited by its peak	limitat de vârf
++the output folder must differ from the source	dosarul de ieșire trebuie să difere de sursă
++saved as FLAC	salvat ca FLAC
++Streaming (Spotify, YouTube, Tidal)	Streaming (Spotify, YouTube, Tidal)
++Apple Music, podcasts	Apple Music, podcasturi
++Quieter, more headroom	Mai încet, mai multă rezervă
++Radio and TV (EBU R128)	Radio și TV (EBU R128)
+diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
+index fe6feed..d0cec59 100644
+--- a/crates/ui-egui/src/app.rs
++++ b/crates/ui-egui/src/app.rs
+@@ -356,6 +356,8 @@ impl SoundApp {
+         dialogs::show(self, &ctx);
+         aaf_import::show(self, &ctx);
+         updates_ui::show(self, &ctx);
++        // CraftOffice: Batch Loudness Match takes the files dropped while it is open.
++        crate::craftoffice_batch::show(&ctx, &self.services, &mut self.pending_drops);
+         // The sampler's drop rects are current now, so route any captured drop in this pass.
+         self.route_dropped_files();
+         // The pass that actually received the injected events has already dispatched their widget
+diff --git a/crates/ui-egui/src/craftoffice_batch.rs b/crates/ui-egui/src/craftoffice_batch.rs
+new file mode 100644
+index 0000000..b41f2ff
+--- /dev/null
++++ b/crates/ui-egui/src/craftoffice_batch.rs
+@@ -0,0 +1,550 @@
++//! CraftOffice: Batch Loudness Match. Many songs (a whole folder, also its subfolders) brought to
++//! the same loudness in one go, so they play equally loud one after another.
++//!
++//! Loudness is measured as streaming services and broadcasters do (integrated LUFS, ITU-R BS.1770,
++//! with the true peak); each file gets the gain that brings it to the target, never more than its
++//! true peak allows under the ceiling, so nothing clips. The results go to another folder, with the
++//! same names and subfolders; the originals are left as they are.
++//!
++//! MP3s are not re-encoded: the gain is written into each frame's `global_gain` (in 1.5 dB steps,
++//! as MP3Gain does), which is lossless and reversible. WAV, AIFF and FLAC are lossless anyway; other
++//! formats are re-encoded in their own format if it can be written, otherwise saved as FLAC.
++
++use std::path::{Path, PathBuf};
++use std::sync::atomic::{AtomicBool, Ordering};
++use std::sync::{Arc, Mutex};
++
++const AUDIO: &[&str] = &["mp3", "wav", "wave", "aif", "aiff", "aifc", "flac", "m4a", "aac", "ogg", "oga", "opus", "mp2", "ac3"];
++
++/// The targets offered: (LUFS, what it is for).
++const TARGETS: &[(f32, &str)] = &[
++    (-14.0, "Streaming (Spotify, YouTube, Tidal)"),
++    (-16.0, "Apple Music, podcasts"),
++    (-18.0, "Quieter, more headroom"),
++    (-23.0, "Radio and TV (EBU R128)"),
++];
++
++#[derive(Clone)]
++enum Status {
++    Waiting,
++    Working,
++    Measured { lufs: f32, peak: f32 },
++    Done { lufs: f32, gain: f32, note: Option<String> },
++    Skipped(String),
++    Failed(String),
++}
++
++#[derive(Clone)]
++struct Row {
++    path: PathBuf,
++    /// The folder it was added with (subfolders are kept below the output folder), if any.
++    root: Option<PathBuf>,
++    status: Status,
++}
++
++struct State {
++    open: bool,
++    rows: Arc<Mutex<Vec<Row>>>,
++    target: f32,
++    ceiling: f32,
++    out_dir: Option<PathBuf>,
++    running: Arc<AtomicBool>,
++    stop: Arc<AtomicBool>,
++}
++
++static STATE: Mutex<Option<State>> = Mutex::new(None);
++
++fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
++    let mut g = STATE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
++    let s = g.get_or_insert_with(|| State {
++        open: false,
++        rows: Arc::new(Mutex::new(Vec::new())),
++        target: -14.0,
++        ceiling: -1.0,
++        out_dir: None,
++        running: Arc::new(AtomicBool::new(false)),
++        stop: Arc::new(AtomicBool::new(false)),
++    });
++    f(s)
++}
++
++/// The app's own translation, then CraftOffice's (egui's text hook), for text built into longer lines.
++fn t(s: &str) -> String {
++    let s = crate::localization::text(s).to_string();
++    egui::WidgetText::from(s.as_str()).text().to_string()
++}
++
++/// Opens the window (File menu / app menu).
++pub fn open() {
++    with(|s| s.open = true);
++}
++
++pub fn is_open() -> bool {
++    with(|s| s.open)
++}
++
++fn is_audio(p: &Path) -> bool {
++    p.extension().and_then(|e| e.to_str()).is_some_and(|e| AUDIO.contains(&e.to_ascii_lowercase().as_str()))
++}
++
++/// The audio files in `dir` and its subfolders, sorted.
++fn scan(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
++    let Ok(rd) = std::fs::read_dir(dir) else { return };
++    let mut entries: Vec<PathBuf> = rd.filter_map(|e| e.ok().map(|e| e.path())).collect();
++    entries.sort();
++    for p in entries {
++        let hidden = p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with('.'));
++        if hidden {
++            continue;
++        }
++        if p.is_dir() {
++            if depth < 8 {
++                scan(&p, out, depth + 1);
++            }
++        } else if is_audio(&p) {
++            out.push(p);
++        }
++    }
++}
++
++fn add_paths(rows: &Arc<Mutex<Vec<Row>>>, paths: Vec<PathBuf>) {
++    let mut rows = rows.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
++    for p in paths {
++        let mut add = |path: PathBuf, root: Option<PathBuf>| {
++            if !rows.iter().any(|r| r.path == path) {
++                rows.push(Row { path, root, status: Status::Waiting });
++            }
++        };
++        if p.is_dir() {
++            let mut files = Vec::new();
++            scan(&p, &mut files, 0);
++            for f in files {
++                add(f, Some(p.clone()));
++            }
++        } else if is_audio(&p) {
++            add(p, None);
++        }
++    }
++}
++
++/// Where the processed files go when no folder was chosen: next to the first file's folder.
++fn default_out(rows: &[Row], target: f32) -> Option<PathBuf> {
++    let first = rows.first()?;
++    let base = first.root.clone().or_else(|| first.path.parent().map(Path::to_path_buf))?;
++    let name = format!("{} ({} LUFS)", base.file_name().and_then(|n| n.to_str()).unwrap_or("audio"), target.round() as i32);
++    Some(base.parent().unwrap_or(&base).join(name))
++}
++
++/// Draws the window; takes the files dropped on it while it is open.
++pub fn show(ctx: &egui::Context, services: &crate::Services, drops: &mut Vec<(egui::DroppedFileHandle, Option<egui::Pos2>)>) {
++    if !is_open() {
++        return;
++    }
++    let (rows, running, stop) = with(|s| (s.rows.clone(), s.running.clone(), s.stop.clone()));
++    // files dropped anywhere while this window is open are for it
++    if !drops.is_empty() && !running.load(Ordering::Relaxed) {
++        let paths: Vec<PathBuf> = drops.iter().map(|(f, _)| f.path().to_path_buf()).filter(|p| p.is_absolute()).collect();
++        if !paths.is_empty() {
++            drops.retain(|(f, _)| !f.path().is_absolute());
++            add_paths(&rows, paths);
++        }
++    }
++    let mut open = true;
++    egui::Window::new(t("Batch Loudness Match"))
++        .open(&mut open)
++        .default_size([640.0, 460.0])
++        .resizable(true)
++        .collapsible(false)
++        .show(ctx, |ui| body(ui, services, &rows, &running, &stop));
++    if running.load(Ordering::Relaxed) {
++        ctx.request_repaint_after(std::time::Duration::from_millis(150));
++    }
++    if !open {
++        stop.store(true, Ordering::Relaxed);
++        with(|s| s.open = false);
++    }
++}
++
++fn body(ui: &mut egui::Ui, services: &crate::Services, rows: &Arc<Mutex<Vec<Row>>>, running: &Arc<AtomicBool>, stop: &Arc<AtomicBool>) {
++    let busy = running.load(Ordering::Relaxed);
++    ui.label(egui::RichText::new(t("Brings every song to the same loudness. The originals stay as they are; the results go to another folder.")).weak());
++    ui.add_space(4.0);
++    ui.add_enabled_ui(!busy, |ui| {
++        ui.horizontal_wrapped(|ui| {
++            if ui.button(t("Add Folder…")).clicked() {
++                if let Some(pick) = &services.pick_folder {
++                    let start = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from).unwrap_or_default();
++                    if let Some(dir) = pick(&start) {
++                        add_paths(rows, vec![dir]);
++                    }
++                }
++            }
++            if ui.button(t("Add Files…")).clicked() {
++                if let Some(pick) = &services.pick_open_many {
++                    add_paths(rows, pick("audio"));
++                }
++            }
++            if ui.button(t("Clear List")).clicked() {
++                rows.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clear();
++            }
++            ui.label(egui::RichText::new(t("…or drop a folder or files here")).weak().small());
++        });
++        ui.horizontal(|ui| {
++            ui.label(t("Target loudness:"));
++            let (target, _) = with(|s| (s.target, ()));
++            let mut target_v = target;
++            let label = TARGETS.iter().find(|(v, _)| (*v - target).abs() < 0.01).map_or_else(|| format!("{target:.1} LUFS"), |(v, n)| format!("{v:.0} LUFS – {}", t(n)));
++            egui::ComboBox::from_id_salt("co_batch_target").selected_text(label).width(300.0).show_ui(ui, |ui| {
++                for (v, n) in TARGETS {
++                    ui.selectable_value(&mut target_v, *v, format!("{v:.0} LUFS – {}", t(n)));
++                }
++            });
++            ui.add(egui::DragValue::new(&mut target_v).range(-40.0..=-5.0).speed(0.1).suffix(" LUFS"));
++            with(|s| s.target = target_v);
++        });
++        ui.horizontal(|ui| {
++            ui.label(t("Peak ceiling:"));
++            let mut c = with(|s| s.ceiling);
++            ui.add(egui::DragValue::new(&mut c).range(-6.0..=0.0).speed(0.1).suffix(" dBTP"))
++                .on_hover_text(t("No song is made louder than this peak allows, so nothing clips."));
++            with(|s| s.ceiling = c);
++        });
++        ui.horizontal(|ui| {
++            ui.label(t("Save to:"));
++            let list = rows.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
++            let (out, target) = with(|s| (s.out_dir.clone(), s.target));
++            let shown = out.clone().or_else(|| default_out(&list, target));
++            ui.label(egui::RichText::new(shown.as_ref().map_or_else(|| "—".to_string(), |p| p.display().to_string())).monospace());
++            if ui.button(t("Choose…")).clicked() {
++                if let Some(pick) = &services.pick_folder {
++                    let start = shown.clone().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default();
++                    if let Some(dir) = pick(&start) {
++                        with(|s| s.out_dir = Some(dir));
++                    }
++                }
++            }
++        });
++    });
++    ui.separator();
++    let list = rows.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
++    ui.horizontal(|ui| {
++        let can = !list.is_empty() && !busy;
++        if ui.add_enabled(can, egui::Button::new(t("Measure Only"))).clicked() {
++            start(rows, running, stop, true);
++        }
++        if ui.add_enabled(can, egui::Button::new(egui::RichText::new(t("Match Loudness")).strong())).clicked() {
++            start(rows, running, stop, false);
++        }
++        if busy && ui.button(t("Stop")).clicked() {
++            stop.store(true, Ordering::Relaxed);
++        }
++        let done = list.iter().filter(|r| matches!(r.status, Status::Done { .. } | Status::Measured { .. } | Status::Skipped(_) | Status::Failed(_))).count();
++        ui.label(format!("{done} / {}", list.len()));
++    });
++    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
++        egui::Grid::new("co_batch_rows").striped(true).num_columns(3).spacing([12.0, 3.0]).show(ui, |ui| {
++            for r in &list {
++                let name = r.root.as_ref().and_then(|root| r.path.strip_prefix(root).ok()).unwrap_or(&r.path).display().to_string();
++                ui.label(name);
++                let (a, b) = match &r.status {
++                    Status::Waiting => ("".to_string(), "".to_string()),
++                    Status::Working => ("…".to_string(), "".to_string()),
++                    Status::Measured { lufs, peak } => (format!("{lufs:.1} LUFS"), format!("{} {peak:.1} dBTP", t("peak"))),
++                    Status::Done { lufs, gain, note } => {
++                        (format!("{lufs:.1} LUFS"), format!("{gain:+.1} dB ✓{}", note.as_ref().map_or_else(String::new, |n| format!("  ({n})"))))
++                    }
++                    Status::Skipped(why) => ("".to_string(), format!("– {why}")),
++                    Status::Failed(why) => ("".to_string(), format!("✗ {why}")),
++                };
++                ui.label(a);
++                ui.label(b);
++                ui.end_row();
++            }
++        });
++    });
++}
++
++fn start(rows: &Arc<Mutex<Vec<Row>>>, running: &Arc<AtomicBool>, stop: &Arc<AtomicBool>, measure_only: bool) {
++    let (target, ceiling, out) = with(|s| (s.target, s.ceiling, s.out_dir.clone()));
++    let list = rows.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
++    let Some(out) = out.or_else(|| default_out(&list, target)) else { return };
++    running.store(true, Ordering::Relaxed);
++    stop.store(false, Ordering::Relaxed);
++    let (rows, running, stop) = (rows.clone(), running.clone(), stop.clone());
++    std::thread::spawn(move || {
++        for i in 0..list.len() {
++            if stop.load(Ordering::Relaxed) {
++                break;
++            }
++            let set = |st: Status| {
++                if let Some(r) = rows.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get_mut(i) {
++                    r.status = st;
++                }
++            };
++            set(Status::Working);
++            let row = &list[i];
++            let st = match process(row, &out, target, ceiling, measure_only) {
++                Ok(st) => st,
++                Err(e) => Status::Failed(e),
++            };
++            set(st);
++        }
++        running.store(false, Ordering::Relaxed);
++    });
++}
++
++/// Integrated loudness and true peak of decoded audio.
++fn measure(buf: &craft_audio::AudioBuffer) -> (f32, f32) {
++    let frames = buf.channels.first().map_or(0, Vec::len);
++    let mut m = soundcraft_dsp::meter::LoudnessMeter::new(buf.sample_rate as f32, buf.channels.len().max(1));
++    m.process(&buf.channels, frames);
++    (m.integrated_lufs(), m.true_peak_db())
++}
++
++fn process(row: &Row, out_dir: &Path, target: f32, ceiling: f32, measure_only: bool) -> Result<Status, String> {
++    let bytes = std::fs::read(&row.path).map_err(|e| e.to_string())?;
++    let ext = row.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
++    let (info, mut buf) = craft_audio::decode(&bytes, Some(&ext)).map_err(|e| e.to_string())?;
++    let (lufs, peak) = measure(&buf);
++    if !lufs.is_finite() || lufs < -70.0 {
++        return Ok(Status::Skipped(t("silent")));
++    }
++    if measure_only {
++        return Ok(Status::Measured { lufs, peak });
++    }
++    let wanted = target - lufs;
++    let room = ceiling - peak;
++    let mut note = None;
++    let mut gain = wanted;
++    let limited = gain > room;
++    if limited {
++        gain = room;
++        note = Some(format!("{} {:.1} LUFS, {}", t("reaches"), lufs + gain, t("limited by its peak")));
++    }
++    // where it goes: the same name (and subfolders) below the output folder
++    let rel = row.root.as_ref().and_then(|r| row.path.strip_prefix(r).ok()).map(Path::to_path_buf).unwrap_or_else(|| row.path.file_name().map(PathBuf::from).unwrap_or_default());
++    let mut dest = out_dir.join(rel);
++    if dest == row.path {
++        return Err(t("the output folder must differ from the source"));
++    }
++    let data = if ext == "mp3" {
++        let steps = mp3gain::steps_for(gain, limited);
++        let applied = f32::from(steps) * mp3gain::STEP_DB;
++        gain = applied;
++        match mp3gain::apply(&bytes, steps) {
++            Ok(b) => b,
++            Err(e) => return Err(format!("MP3: {e}")),
++        }
++    } else {
++        let k = 10f32.powf(gain / 20.0);
++        for ch in &mut buf.channels {
++            for v in ch.iter_mut() {
++                *v *= k;
++            }
++        }
++        let (format, depth) = match craft_audio::encode_format_for(&ext) {
++            Some(f) => (f, depth_of(info.sample_format)),
++            None => {
++                dest.set_extension("flac");
++                note = Some(t("saved as FLAC"));
++                (craft_audio::encode_format_for("flac").ok_or("FLAC")?, craft_audio::BitDepth::Int24)
++            }
++        };
++        let dither = !matches!(depth, craft_audio::BitDepth::Float32);
++        let mut opts = craft_audio::EncodeOptions::new(format).with_bit_depth(depth).with_dither(dither);
++        if info.sample_format == craft_audio::SampleFormat::Compressed {
++            // a lossy file again: at a generous rate, so re-encoding loses as little as it can
++            opts = opts.with_bitrate(160_000 * u32::from(info.channels.clamp(1, 2)));
++        }
++        if info.layout.is_ordered() {
++            opts = opts.with_layout(info.layout);
++        }
++        craft_audio::encode(&buf, &opts).map_err(|e| e.to_string())?
++    };
++    if let Some(dir) = dest.parent() {
++        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
++    }
++    std::fs::write(&dest, data).map_err(|e| e.to_string())?;
++    Ok(Status::Done { lufs, gain, note })
++}
++
++fn depth_of(f: craft_audio::SampleFormat) -> craft_audio::BitDepth {
++    use craft_audio::{BitDepth, SampleFormat};
++    match f {
++        SampleFormat::Int8 | SampleFormat::Int16 => BitDepth::Int16,
++        SampleFormat::Int32 => BitDepth::Int32,
++        SampleFormat::Float32 | SampleFormat::Float64 => BitDepth::Float32,
++        _ => BitDepth::Int24,
++    }
++}
++
++/// Lossless MP3 gain: each Layer III granule's `global_gain` moves by whole steps of 1.5 dB.
++pub mod mp3gain {
++    /// One step of `global_gain`: a factor of 2^(1/4).
++    pub const STEP_DB: f32 = 1.505_15;
++
++    /// The whole steps for `gain_db`: the nearest, or when `at_most` (a peak limit) never above it.
++    pub fn steps_for(gain_db: f32, at_most: bool) -> i8 {
++        let s = gain_db / STEP_DB;
++        let s = if at_most { (s + 1e-4).floor() } else { s.round() };
++        s.clamp(-60.0, 60.0) as i8
++    }
++
++    const BR1: [u32; 15] = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
++    const BR2: [u32; 15] = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
++
++    struct Frame {
++        len: usize,
++        mpeg1: bool,
++        mono: bool,
++        crc: bool,
++    }
++
++    fn header(b: &[u8]) -> Option<Frame> {
++        if b.len() < 4 || b[0] != 0xFF || (b[1] & 0xE0) != 0xE0 {
++            return None;
++        }
++        let version = (b[1] >> 3) & 3; // 0: 2.5, 2: 2, 3: 1
++        let layer = (b[1] >> 1) & 3; // 1: Layer III
++        if version == 1 || layer != 1 {
++            return None;
++        }
++        let crc = b[1] & 1 == 0;
++        let bi = usize::from(b[2] >> 4);
++        let si = usize::from((b[2] >> 2) & 3);
++        if bi == 0 || bi == 15 || si == 3 {
++            return None;
++        }
++        let pad = usize::from((b[2] >> 1) & 1);
++        let mono = (b[3] >> 6) == 3;
++        let mpeg1 = version == 3;
++        let rate = [[11025u32, 12000, 8000], [0, 0, 0], [22050, 24000, 16000], [44100, 48000, 32000]][usize::from(version)][si];
++        let br = if mpeg1 { BR1[bi] } else { BR2[bi] } * 1000;
++        let len = if mpeg1 { 144 * br / rate } else { 72 * br / rate } as usize + pad;
++        Some(Frame { len, mpeg1, mono, crc })
++    }
++
++    fn get_bits(b: &[u8], pos: usize, n: usize) -> u32 {
++        let mut v = 0u32;
++        for i in pos..pos + n {
++            v = (v << 1) | u32::from((b[i / 8] >> (7 - i % 8)) & 1);
++        }
++        v
++    }
++
++    fn set_bits(b: &mut [u8], pos: usize, n: usize, v: u32) {
++        for (k, i) in (pos..pos + n).enumerate() {
++            let bit = ((v >> (n - 1 - k)) & 1) as u8;
++            let mask = 1u8 << (7 - i % 8);
++            if bit == 1 {
++                b[i / 8] |= mask;
++            } else {
++                b[i / 8] &= !mask;
++            }
++        }
++    }
++
++    /// CRC-16 (0x8005) of the header's last two bytes and the side information.
++    fn crc16(parts: &[&[u8]]) -> u16 {
++        let mut crc: u16 = 0xFFFF;
++        for p in parts {
++            for &byte in *p {
++                for i in (0..8).rev() {
++                    let bit = (byte >> i) & 1;
++                    let top = ((crc >> 15) as u8) & 1;
++                    crc <<= 1;
++                    if top ^ bit == 1 {
++                        crc ^= 0x8005;
++                    }
++                }
++            }
++        }
++        crc
++    }
++
++    fn id3v2_len(b: &[u8]) -> usize {
++        if b.len() >= 10 && &b[0..3] == b"ID3" {
++            let size = (usize::from(b[6] & 0x7F) << 21) | (usize::from(b[7] & 0x7F) << 14) | (usize::from(b[8] & 0x7F) << 7) | usize::from(b[9] & 0x7F);
++            let footer = if b[5] & 0x10 != 0 { 10 } else { 0 };
++            10 + size + footer
++        } else {
++            0
++        }
++    }
++
++    /// The file with every frame's gain moved by `steps`; tags and everything else unchanged.
++    pub fn apply(src: &[u8], steps: i8) -> Result<Vec<u8>, String> {
++        let mut b = src.to_vec();
++        if steps == 0 {
++            return Ok(b);
++        }
++        let mut pos = id3v2_len(&b);
++        let mut frames = 0usize;
++        let mut clamped = false;
++        while pos + 4 <= b.len() {
++            if b[pos..].starts_with(b"TAG") || b[pos..].starts_with(b"APETAGEX") || b[pos..].starts_with(b"LYRICSBEGIN") {
++                break;
++            }
++            let Some(f) = header(&b[pos..]) else {
++                pos += 1; // resynchronise
++                continue;
++            };
++            // a real frame is followed by another (or the end / a tag)
++            let next = pos + f.len;
++            if next + 2 <= b.len() && header(&b[next..]).is_none() && !b[next..].starts_with(b"TAG") && !b[next..].starts_with(b"APETAGEX") {
++                pos += 1;
++                continue;
++            }
++            let side_len = match (f.mpeg1, f.mono) {
++                (true, true) => 17,
++                (true, false) => 32,
++                (false, true) => 9,
++                (false, false) => 17,
++            };
++            let side = pos + 4 + if f.crc { 2 } else { 0 };
++            if side + side_len > b.len() || next > b.len() {
++                break;
++            }
++            let nch = if f.mono { 1 } else { 2 };
++            let (start, block, granules) = if f.mpeg1 {
++                (9 + if f.mono { 5 } else { 3 } + 4 * nch, 59, 2)
++            } else {
++                (8 + if f.mono { 1 } else { 2 }, 63, 1)
++            };
++            for g in 0..granules {
++                for c in 0..nch {
++                    let at = start + (g * nch + c) * block + 21;
++                    let s = &mut b[side..side + side_len];
++                    let old = get_bits(s, at, 8) as i32;
++                    let new = old + i32::from(steps);
++                    clamped |= !(0..=255).contains(&new);
++                    set_bits(s, at, 8, new.clamp(0, 255) as u32);
++                }
++            }
++            if f.crc {
++                let c = crc16(&[&b[pos + 2..pos + 4], &b[side..side + side_len]]);
++                b[pos + 4] = (c >> 8) as u8;
++                b[pos + 5] = (c & 0xFF) as u8;
++            }
++            frames += 1;
++            pos = next;
++        }
++        if frames == 0 {
++            return Err("no MPEG Layer III frames".into());
++        }
++        let _ = clamped;
++        Ok(b)
++    }
++
++    #[cfg(test)]
++    mod tests {
++        #[test]
++        fn steps_never_exceed() {
++            assert_eq!(super::steps_for(3.0, true), 1);
++            assert_eq!(super::steps_for(3.02, true), 2);
++            assert_eq!(super::steps_for(2.9, false), 2);
++            assert_eq!(super::steps_for(-0.1, false), 0);
++            assert_eq!(super::steps_for(-1.0, false), -1);
++        }
++    }
++}
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index a93bd08..5da1f16 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -17,6 +17,7 @@ pub mod aaf_import;
+ pub mod appearance;
+ pub mod bounce;
+ pub mod control;
++pub mod craftoffice_batch;
+ pub mod credits;
+ pub mod dialogs;
+ pub mod docking;
+diff --git a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
+index 12e3440..31f01ba 100644
+--- a/crates/ui-egui/src/menus.rs
++++ b/crates/ui-egui/src/menus.rs
+@@ -291,6 +291,10 @@ pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
+                         if ui.button(crate::localization::text("Session Audio Health")).clicked() {
+                             let _ = app.run("window.audio_health", json!({"value": true}));
+                         }
++                        #[cfg(not(target_arch = "wasm32"))]
++                        if ui.button(crate::localization::text("Batch Loudness Match…")).clicked() {
++                            crate::craftoffice_batch::open();
++                        }
+                         ui.separator();
+                         if ui.button(crate::localization::text("Quit")).clicked() {
+                             let _ = crate::dialogs::run_or_ask(app, "app.quit", json!({}));
