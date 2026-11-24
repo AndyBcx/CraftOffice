@@ -96,6 +96,8 @@ jobs:
           done
           # AniCraft: a CraftOffice mod-sorok a belső attribútumok mögé
           [ -f appsrc/src/main.rs ] && perl -0pi -e 's/(mod craftoffice_brand;\r?\nmod craftoffice_i18n;\r?\n)(.*?#!\[cfg_attr\(target_arch = "wasm32", allow\(dead_code\)\)\]\r?\n)/$2$1/s' appsrc/src/main.rs || true
+          # an app ArtCraft moved to a newer egui: CraftOffice's hooked egui on that revision too
+          python3 extra/egui_hooks.py appsrc "$W" "$W/patches/egui.patch" VERSION
           find appsrc -name Cargo.toml -not -path "*/target/*" -print0 | xargs -0 sed -i "s#/home/claude/#$W/#g"
           export CRAFT_I18N_DIR="$W/craft-i18n" CRAFT_FONTS_DIR="$W/craft-fonts"
           cd appsrc && cargo build --release -p "$A"

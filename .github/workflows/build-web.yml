@@ -80,6 +80,8 @@ jobs:
             if [ -n "${REBASED:-}" ] && [ "$P" = "extra/$A.patch" ]; then continue; fi
             if [ -f "$P" ]; then echo "extra: $P"; (cd appsrc && git apply --whitespace=nowarn "$W/$P"); fi
           done
+          # an app ArtCraft moved to a newer egui: CraftOffice's hooked egui (with the names) on that revision too
+          python3 extra/egui_hooks.py appsrc "$W" "$W/patches/egui.patch" VERSION --brand
           find appsrc -name Cargo.toml -not -path "*/target/*" -print0 | xargs -0 sed -i "s#/home/claude/#$W/#g"
           if [ "$A" = wordcraft ]; then
             # Writer in the browser: Hungarian and Romanian spelling, hyphenation, thesaurus and
