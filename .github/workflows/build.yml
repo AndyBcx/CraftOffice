@@ -62,6 +62,31 @@ jobs:
           name: app-sketch
           path: out/
 
+  photocalendar:
+    # CraftOffice PhotoCalendar: its source is bundle/photocalendar-src.tar.gz
+    if: ${{ !inputs.only || inputs.only == 'photocalendar' }}
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build CraftOffice PhotoCalendar
+        shell: bash
+        run: |
+          set -e
+          tar xzf bundle/photocalendar-src.tar.gz
+          cd photocalendar-main
+          sh scripts/get-fonts.sh
+          cargo build --release --bin photocalendar
+          V=$(cargo pkgid | sed -E 's/.*[#@]([0-9][^#@]*)$/\1/')
+          N="CraftOffice PhotoCalendar"
+          mkdir -p "../out/apps/$N"
+          cp target/release/photocalendar.exe "../out/apps/$N/$N.exe"
+          printf '{"id":"photocalendar","version":"%s","exe":"%s.exe"}' "$V" "$N" > "../out/apps/$N/craftoffice.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-photocalendar
+          path: out/
+
   app:
     runs-on: windows-latest
     timeout-minutes: 300
@@ -214,7 +239,7 @@ jobs:
           path: out/
 
   package:
-    needs: [launcher, sketch, app, dicts, tools]
+    needs: [launcher, sketch, app, dicts, tools, photocalendar]
     if: always()
     runs-on: ubuntu-latest
     steps:
