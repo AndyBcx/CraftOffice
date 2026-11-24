@@ -143,11 +143,7 @@ jobs:
           pip install --quiet pillow
           mkdir -p craftoffice-web/site/icons
           cp -r parts/. craftoffice-web/site/
-          cp web/index.html web/manifest.webmanifest web/sw.js web/drive.js web/drive-auth.html craftoffice-web/site/
-          # "Save to Google Drive" beside the download in every app (active once install.sh is given a client ID)
-          for f in craftoffice-web/site/*/index.html; do
-            grep -q 'drive.js' "$f" || sed -i 's#</head>#<script charset="utf-8" src="../drive.js"></script></head>#' "$f"
-          done
+          cp web/index.html web/manifest.webmanifest web/sw.js craftoffice-web/site/
           cp web/Caddyfile web/install.sh craftoffice-web/
           chmod +x craftoffice-web/install.sh
           for id in craftoffice sketch wordcraft gridcraft pdfcraft photocraft deckcraft designcraft vectorcraft lightcraft filmcraft effectcraft soundcraft figcraft cadcraft materialcraft texturecraft craft-anything; do
