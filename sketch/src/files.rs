@@ -28,6 +28,9 @@ struct LayerHeader {
     /// The layer mask's PNG, right after the layer's (bytes; absent: no mask).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     mask_png: Option<usize>,
+    /// Clipping mask (clipped to the layer under it).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    clip: bool,
 }
 
 fn png(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
@@ -66,6 +69,7 @@ pub fn save_project(doc: &Doc) -> Result<Vec<u8>, String> {
                 blend: l.blend,
                 png: p.len(),
                 mask_png: m.as_ref().map(Vec::len),
+                clip: l.clip,
             })
             .collect(),
     };
@@ -121,6 +125,7 @@ pub fn load_project(bytes: &[u8]) -> Result<Doc, String> {
             px: img.into_raw(),
             mask,
             on_mask: false,
+            clip: lh.clip,
         });
     }
     let active = header.active.min(layers.len() - 1);
@@ -139,6 +144,24 @@ pub fn decode_image(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
 
 pub fn export_png(doc: &Doc) -> Result<Vec<u8>, String> {
     png(doc.w, doc.h, &doc.flatten(None))
+}
+
+/// The flipbook as an animated GIF: one frame per entry of `frames` (each a layer opacity list
+/// for [`Doc::composite_with`]), over white, `fps` frames a second, looping.
+pub fn export_gif(doc: &Doc, frames: &[Vec<f32>], fps: u32) -> Result<Vec<u8>, String> {
+    use image::codecs::gif::{GifEncoder, Repeat};
+    let mut out = Vec::new();
+    {
+        let mut enc = GifEncoder::new_with_speed(&mut out, 10);
+        enc.set_repeat(Repeat::Infinite).map_err(|e| e.to_string())?;
+        let delay = image::Delay::from_numer_denom_ms(1000, fps.clamp(1, 60));
+        for m in frames {
+            let px = doc.composite_with(doc.full(), Some([255, 255, 255]), Some(m));
+            let img = image::RgbaImage::from_raw(doc.w, doc.h, px).ok_or("frame")?;
+            enc.encode_frame(image::Frame::from_parts(img, 0, 0, delay)).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(out)
 }
 
 /// JPEG has no transparency: the picture goes over white.
@@ -203,7 +226,7 @@ pub fn export_psd(doc: &Doc) -> Vec<u8> {
         };
         li.extend_from_slice(key);
         li.push((l.opacity.clamp(0.0, 1.0) * 255.0).round() as u8);
-        li.push(0); // clipping
+        li.push(u8::from(l.clip)); // clipping (1: clipped to the layer under it)
         li.push(if l.visible { 0 } else { 2 });
         li.push(0);
         // extra data: no mask, no blending ranges, the name (Pascal, padded to 4)

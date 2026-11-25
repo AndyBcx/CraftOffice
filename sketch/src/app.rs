@@ -6,7 +6,7 @@ use egui::{pos2, vec2, Align2, Color32, CornerRadius, FontId, Key, Pos2, Rect, S
 
 use crate::files;
 use crate::i18n::{self, t, Lang};
-use crate::raster::{self, Blend, Brush, Doc, Filter, Gradient, History, IRect, Mode, Moving, SelOp, Shape, Stroke, Tip, Transform, Undo};
+use crate::raster::{self, Blend, Brush, Doc, Filter, Gradient, History, IRect, Mode, Moving, SelOp, Shape, Stroke, Sym, SymKind, Tip, Transform, Undo, Warp};
 use std::sync::Arc;
 use crate::text;
 
@@ -16,6 +16,7 @@ pub enum Tool {
     Lasso,
     Wand,
     Move,
+    Transform,
     Pencil,
     Pen,
     Brush,
@@ -24,6 +25,7 @@ pub enum Tool {
     Eraser,
     Fill,
     Gradient,
+    LassoFill,
     Eyedropper,
     Line,
     Rect,
@@ -32,11 +34,12 @@ pub enum Tool {
     Hand,
 }
 
-const TOOLS: [(Tool, &str, &str); 18] = [
+const TOOLS: [(Tool, &str, &str); 20] = [
     (Tool::Select, "Select", "S"),
     (Tool::Lasso, "Lasso", "Q"),
     (Tool::Wand, "Magic Wand", "W"),
     (Tool::Move, "Move", "V"),
+    (Tool::Transform, "Transform", "R"),
     (Tool::Pencil, "Pencil", "P"),
     (Tool::Pen, "Pen", "N"),
     (Tool::Brush, "Brush", "B"),
@@ -45,6 +48,7 @@ const TOOLS: [(Tool, &str, &str); 18] = [
     (Tool::Eraser, "Eraser", "E"),
     (Tool::Fill, "Fill", "G"),
     (Tool::Gradient, "Gradient", "D"),
+    (Tool::LassoFill, "Lasso Fill", "F"),
     (Tool::Eyedropper, "Eyedropper", "I"),
     (Tool::Line, "Line", "L"),
     (Tool::Rect, "Rectangle", "U"),
@@ -70,7 +74,7 @@ impl Tool {
             Tool::Airbrush => (60.0, 1.0, 0.0),
             Tool::Eraser => (24.0, 1.0, 0.8),
             Tool::Line | Tool::Rect | Tool::Ellipse => (4.0, 1.0, 1.0),
-            Tool::Fill | Tool::Gradient => (1.0, 1.0, 1.0),
+            Tool::Fill | Tool::Gradient | Tool::LassoFill | Tool::Transform => (1.0, 1.0, 1.0),
             Tool::Eyedropper | Tool::Hand | Tool::Select | Tool::Lasso | Tool::Wand | Tool::Move | Tool::Text => (1.0, 1.0, 1.0),
         };
         ToolSettings { size, opacity, hardness }
@@ -91,6 +95,61 @@ impl Tool {
     }
 }
 
+/// A ready-made pencil or pen: the tip and how it lays down graphite or ink.
+#[derive(Clone, Copy)]
+struct Nib {
+    name: &'static str,
+    tip: Tip,
+    size: f32,
+    opacity: f32,
+    hardness: f32,
+    spacing: f32,
+    taper: f32,
+    speed: f32,
+}
+
+const fn nib(name: &'static str, tip: Tip, size: f32, opacity: f32, hardness: f32, spacing: f32, taper: f32, speed: f32) -> Nib {
+    Nib { name, tip, size, opacity, hardness, spacing, taper, speed }
+}
+
+const PENCIL_NIBS: [Nib; 8] = [
+    nib("2H pencil", Tip::Graphite, 2.0, 0.45, 0.9, 0.08, 0.0, 0.0),
+    nib("HB pencil", Tip::Graphite, 3.0, 0.75, 0.8, 0.08, 0.0, 0.0),
+    nib("2B pencil", Tip::Graphite, 4.0, 0.9, 0.7, 0.08, 0.0, 0.0),
+    nib("6B pencil", Tip::Graphite, 7.0, 1.0, 0.45, 0.08, 0.0, 0.0),
+    nib("Mechanical pencil 0.5", Tip::Round, 2.0, 0.8, 1.0, 0.06, 0.0, 0.0),
+    nib("Coloured pencil", Tip::Graphite, 5.0, 0.85, 0.6, 0.08, 0.0, 0.0),
+    nib("Charcoal", Tip::Chalk, 12.0, 0.9, 0.5, 0.1, 0.0, 0.0),
+    nib("Pixel pencil", Tip::Square, 1.0, 1.0, 1.0, 0.08, 0.0, 0.0),
+];
+
+const PEN_NIBS: [Nib; 8] = [
+    nib("Fineliner 0.3", Tip::Round, 3.0, 1.0, 1.0, 0.08, 0.0, 0.0),
+    nib("Technical pen", Tip::Round, 2.0, 1.0, 1.0, 0.05, 0.0, 0.0),
+    nib("Ballpoint", Tip::Ballpoint, 2.5, 0.85, 0.95, 0.08, 0.0, 0.0),
+    nib("Gel pen", Tip::Round, 4.0, 1.0, 0.95, 0.08, 0.0, 0.0),
+    nib("Ink pen", Tip::Round, 5.0, 1.0, 0.95, 0.06, 0.4, 0.5),
+    nib("Brush pen", Tip::Round, 14.0, 1.0, 0.9, 0.05, 0.8, 1.0),
+    nib("Calligraphy nib", Tip::Flat, 14.0, 1.0, 0.95, 0.05, 0.0, 0.0),
+    nib("Felt-tip pen", Tip::Round, 8.0, 0.8, 0.85, 0.08, 0.0, 0.0),
+];
+
+fn nibs(tool: Tool) -> &'static [Nib] {
+    match tool {
+        Tool::Pencil => &PENCIL_NIBS,
+        Tool::Pen => &PEN_NIBS,
+        _ => &[],
+    }
+}
+
+/// The extras a nib sets beyond the tool settings: spacing, taper, speed.
+#[derive(Clone, Copy, Default)]
+struct NibExtra {
+    spacing: Option<f32>,
+    taper: f32,
+    speed: f32,
+}
+
 /// What a file dialog or a read came back with.
 pub enum Io {
     /// A file to open as the drawing (or to import as a layer).
@@ -108,6 +167,7 @@ pub enum SaveKind {
     Png,
     Jpeg,
     Psd,
+    Gif,
 }
 
 impl SaveKind {
@@ -117,6 +177,7 @@ impl SaveKind {
             SaveKind::Png => "png",
             SaveKind::Jpeg => "jpg",
             SaveKind::Psd => "psd",
+            SaveKind::Gif => "gif",
         }
     }
 }
@@ -214,6 +275,51 @@ pub struct SketchApp {
     wand_tol: u8,
     wand_contiguous: bool,
     filter_dlg: Option<FilterDlg>,
+    /// The nib chosen for the pencil and the pen, and what it sets.
+    nib_sel: std::collections::HashMap<Tool, usize>,
+    nib_extra: std::collections::HashMap<Tool, NibExtra>,
+    /// Symmetry (its centre: None is the middle of the canvas).
+    sym_kind: SymKind,
+    sym_n: u8,
+    sym_c: Option<(f32, f32)>,
+    /// Perspective guides: 0 off, 1–3 points; the vanishing points in canvas pixels.
+    persp: u8,
+    vps: [(f32, f32); 3],
+    persp_snap: bool,
+    /// The stroke's start and the perspective line it follows, once it is clear.
+    persp_lock: Option<((f32, f32), (f32, f32))>,
+    stroke_start: Option<(f32, f32)>,
+    /// Predictive stroke: lines, circles and simple shapes come out clean.
+    predictive: bool,
+    stroke_pts: Vec<(f32, f32)>,
+    /// A guide handle being dragged: 0 the symmetry centre, 1–3 a vanishing point, 4–5 the
+    /// ruler's ends, 6–8 the ellipse guide's centre and axes.
+    guide_drag: Option<usize>,
+    /// Free symmetry's angle, in degrees.
+    sym_angle: f32,
+    /// Predictive stroke snaps straight lines to 0°, 45° and 90°.
+    predictive_snap: bool,
+    /// The ruler (two ends) and the ellipse guide (centre, end of one axis, end of the other).
+    ruler: Option<[(f32, f32); 2]>,
+    ellipse_g: Option<[(f32, f32); 3]>,
+    /// A stroke following the ellipse guide.
+    ell_lock: bool,
+    /// Transform in progress, and the handle being dragged with where the drag began.
+    warp: Option<Warp>,
+    warp_drag: Option<(u8, (f32, f32), [(f32, f32); 4])>,
+    /// The outline being drawn with Lasso Fill.
+    lfill: Vec<(f32, f32)>,
+    /// The view turned by this much (radians).
+    rot: f32,
+    /// Flipbook: every layer is a frame (the bottom one can stay as the background of all).
+    flip: bool,
+    flip_bg: bool,
+    onion: bool,
+    playing: bool,
+    fps: u32,
+    last_tick: f64,
+    /// The frame and settings the picture was last built for.
+    flip_shown: Option<(usize, bool, bool, bool)>,
 }
 
 /// A filter being tried out on the active layer.
@@ -317,6 +423,35 @@ impl SketchApp {
             wand_tol: 32,
             wand_contiguous: true,
             filter_dlg: None,
+            nib_sel: std::collections::HashMap::new(),
+            nib_extra: std::collections::HashMap::new(),
+            sym_kind: SymKind::Off,
+            sym_n: 6,
+            sym_c: None,
+            persp: 0,
+            vps: [(0.0, 0.0); 3],
+            persp_snap: true,
+            persp_lock: None,
+            stroke_start: None,
+            predictive: false,
+            stroke_pts: Vec::new(),
+            guide_drag: None,
+            sym_angle: 30.0,
+            predictive_snap: true,
+            ruler: None,
+            ellipse_g: None,
+            ell_lock: false,
+            warp: None,
+            warp_drag: None,
+            lfill: Vec::new(),
+            rot: 0.0,
+            flip: false,
+            flip_bg: true,
+            onion: true,
+            playing: false,
+            fps: 8,
+            last_tick: 0.0,
+            flip_shown: None,
         };
         if let Some((name, path, bytes)) = open {
             app.open_bytes(name, path, bytes, false);
@@ -439,6 +574,7 @@ impl SketchApp {
     fn undo(&mut self) {
         self.cancel_filter();
         self.cancel_stroke();
+        self.cancel_warp();
         if self.hist.undo(&mut self.doc).is_some() {
             self.rebuild = true;
             self.dirty = true;
@@ -447,6 +583,7 @@ impl SketchApp {
 
     fn redo(&mut self) {
         self.cancel_filter();
+        self.cancel_warp();
         if self.hist.redo(&mut self.doc).is_some() {
             self.rebuild = true;
             self.dirty = true;
@@ -470,6 +607,32 @@ impl SketchApp {
         self.grad_end = None;
         self.sel_start = None;
         self.lasso.clear();
+        self.lfill.clear();
+    }
+
+    /// Finish a transform: the part stays where it was put.
+    fn commit_warp(&mut self) {
+        self.warp_drag = None;
+        if let Some(w) = self.warp.take() {
+            let q = w.quad;
+            let u = w.end(&self.doc);
+            self.pixels(u);
+            if self.selection.is_some() {
+                // the selection follows to the part's new place
+                let pts: Vec<(f32, f32)> = q.to_vec();
+                let m = raster::polygon_mask(&pts, self.doc.w, self.doc.h);
+                self.set_mask_selection(m);
+            }
+        }
+    }
+
+    /// Put a transform back as it was.
+    fn cancel_warp(&mut self) {
+        self.warp_drag = None;
+        if let Some(w) = self.warp.take() {
+            w.cancel(&mut self.doc);
+            self.rebuild = true;
+        }
     }
 
     /// Finish a move in progress.
@@ -669,11 +832,117 @@ impl SketchApp {
 
     // ---- textures ----
 
+    /// The flipbook's frames: the layers (above the background one, when it stays).
+    fn frames(&self) -> Vec<usize> {
+        let from = usize::from(self.flip_bg && self.doc.layers.len() > 1);
+        (from..self.doc.layers.len()).collect()
+    }
+
+    /// How much of each layer shows for frame `f` (with the onion skin: the frames next to it, faint).
+    fn frame_mult(&self, f: usize, onion: bool) -> Vec<f32> {
+        let frames = self.frames();
+        let pos = frames.iter().position(|&x| x == f);
+        (0..self.doc.layers.len())
+            .map(|i| {
+                if i == f || (self.flip_bg && i == 0 && !frames.contains(&0)) {
+                    1.0
+                } else if let (true, Some(p), Some(q)) = (onion, pos, frames.iter().position(|&x| x == i)) {
+                    match q as i64 - p as i64 {
+                        -1 => 0.3,
+                        1 => 0.12,
+                        _ => 0.0,
+                    }
+                } else {
+                    0.0
+                }
+            })
+            .collect()
+    }
+
+    /// The layer opacities the picture is built with: the flipbook's, or none.
+    fn view_mult(&self) -> Option<Vec<f32>> {
+        self.flip.then(|| self.frame_mult(self.doc.active, self.onion && !self.playing))
+    }
+
+    /// Flipbook: the next frame (and the playback clock).
+    fn flip_tick(&mut self, ctx: &egui::Context) {
+        if !self.flip {
+            self.playing = false;
+            return;
+        }
+        let key = (self.doc.active, self.onion && !self.playing, self.flip_bg, self.playing);
+        if self.flip_shown != Some(key) {
+            self.flip_shown = Some(key);
+            self.rebuild = true;
+        }
+        if self.playing {
+            let now = ctx.input(|i| i.time);
+            let step = 1.0 / self.fps.max(1) as f64;
+            if now - self.last_tick >= step {
+                self.last_tick = now;
+                let fr = self.frames();
+                if let Some(p) = fr.iter().position(|&x| x == self.doc.active) {
+                    self.doc.active = fr[(p + 1) % fr.len()];
+                } else if let Some(&f) = fr.first() {
+                    self.doc.active = f;
+                }
+            }
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(step / 2.0));
+        }
+    }
+
+    fn flipbook_ui(&mut self, ui: &mut Ui) {
+        ui.heading(t("Flipbook"));
+        let fr = self.frames();
+        let at = fr.iter().position(|&x| x == self.doc.active);
+        ui.label(format!("{} {} / {}", t("Frame"), at.map_or(0, |p| p + 1), fr.len()));
+        ui.horizontal(|ui| {
+            if ui.button("<").on_hover_text(t("Previous frame")).clicked() {
+                if let Some(p) = at {
+                    self.doc.active = fr[(p + fr.len() - 1) % fr.len()];
+                }
+            }
+            if ui.button(t(if self.playing { "Stop" } else { "Play" })).clicked() {
+                self.playing = !self.playing;
+                self.cancel_stroke();
+            }
+            if ui.button(">").on_hover_text(t("Next frame")).clicked() {
+                if let Some(p) = at {
+                    self.doc.active = fr[(p + 1) % fr.len()];
+                }
+            }
+        });
+        ui.add(egui::Slider::new(&mut self.fps, 1..=30).text(t("Frames per second")));
+        ui.checkbox(&mut self.onion, t("Onion skin"));
+        ui.checkbox(&mut self.flip_bg, t("Bottom layer is the background of every frame"));
+        ui.horizontal(|ui| {
+            let a = self.doc.active;
+            if ui.button(t("New Frame")).clicked() {
+                let name = format!("{} {}", t("Frame"), fr.len() + 1);
+                self.doc_op(|d| {
+                    d.layers.insert(a + 1, raster::Layer::new(name, d.w, d.h, [0, 0, 0, 0]));
+                    d.active = a + 1;
+                });
+            }
+            if ui.button(t("Duplicate Frame")).clicked() {
+                self.doc_op(|d| {
+                    let mut l = d.layers[a].clone();
+                    l.name = format!("{} 2", l.name);
+                    d.layers.insert(a + 1, l);
+                    d.active = a + 1;
+                });
+            }
+        });
+        ui.label(egui::RichText::new(t("Each layer is a frame; File › Export Animated GIF saves the animation.")).small().weak());
+        ui.separator();
+    }
+
     fn sync_textures(&mut self, ctx: &egui::Context) {
         let opts = TextureOptions { magnification: egui::TextureFilter::Nearest, minification: egui::TextureFilter::Linear, ..Default::default() };
         let size = [self.doc.w as usize, self.doc.h as usize];
+        let mult = self.view_mult();
         if self.rebuild || self.comp.as_ref().is_none_or(|t| t.size() != size) {
-            let px = self.doc.composite(self.doc.full(), None);
+            let px = self.doc.composite_with(self.doc.full(), None, mult.as_deref());
             let img = egui::ColorImage::from_rgba_unmultiplied(size, &px);
             self.comp = Some(ctx.load_texture("picture", img, opts));
             self.comp_dirty = IRect::empty();
@@ -686,7 +955,7 @@ impl SketchApp {
             return;
         }
         if let Some(tex) = self.comp.as_mut() {
-            let data = self.doc.composite(r, None);
+            let data = self.doc.composite_with(r, None, mult.as_deref());
             let img = egui::ColorImage::from_rgba_unmultiplied([r.width() as usize, r.height() as usize], &data);
             tex.set_partial([r.x0 as usize, r.y0 as usize], img, opts);
         }
@@ -718,8 +987,220 @@ impl SketchApp {
             _ => (1.0, false, 0.12, Mode::Paint),
         };
         let tip = self.tips.get(&self.tool).copied().unwrap_or(Tip::Round);
+        let ex = self.nib_extra.get(&self.tool).copied().unwrap_or_default();
+        let spacing = ex.spacing.unwrap_or(spacing);
         let spacing = if tip == Tip::Spray { f32::max(spacing, 0.25) } else { spacing };
-        Brush { size: s.size, hardness: s.hardness, opacity: s.opacity, flow, buildup, mode, color: [c.r(), c.g(), c.b()], spacing, tip }
+        Brush { size: s.size, hardness: s.hardness, opacity: s.opacity, flow, buildup, mode, color: [c.r(), c.g(), c.b()], spacing, tip, taper: ex.taper, speed: ex.speed }
+    }
+
+    /// Put on a pencil or pen nib.
+    fn use_nib(&mut self, tool: Tool, i: usize) {
+        let Some(n) = nibs(tool).get(i).copied() else { return };
+        if let Some(s) = self.settings.get_mut(&tool) {
+            s.size = n.size;
+            s.opacity = n.opacity;
+            s.hardness = n.hardness;
+        }
+        self.tips.insert(tool, n.tip);
+        self.nib_extra.insert(tool, NibExtra { spacing: Some(n.spacing), taper: n.taper, speed: n.speed });
+        self.nib_sel.insert(tool, i);
+    }
+
+    /// The symmetry in force.
+    fn sym(&self) -> Sym {
+        let (cx, cy) = self.sym_c.unwrap_or((self.doc.w as f32 / 2.0, self.doc.h as f32 / 2.0));
+        let kind = match self.sym_kind {
+            SymKind::Radial(_) => SymKind::Radial(self.sym_n),
+            SymKind::Kaleido(_) => SymKind::Kaleido(self.sym_n),
+            k => k,
+        };
+        Sym { kind, cx, cy, angle: self.sym_angle.to_radians() }
+    }
+
+    /// The vanishing points in use.
+    fn active_vps(&self) -> Vec<(f32, f32)> {
+        self.vps[..self.persp.min(3) as usize].to_vec()
+    }
+
+    /// Set the vanishing points where a new perspective guide starts.
+    fn reset_vps(&mut self) {
+        let (w, h) = (self.doc.w as f32, self.doc.h as f32);
+        self.vps = match self.persp {
+            1 => [(w / 2.0, h * 0.45), (0.0, 0.0), (0.0, 0.0)],
+            2 => [(-w * 0.15, h * 0.45), (w * 1.15, h * 0.45), (0.0, 0.0)],
+            _ => [(-w * 0.15, h * 0.35), (w * 1.15, h * 0.35), (w / 2.0, h * 1.6)],
+        };
+    }
+
+    /// The perspective line a stroke from `o` heading along `d` follows: toward a vanishing point,
+    /// or level / upright where the guide has those.
+    fn persp_dir(&self, o: (f32, f32), d: (f32, f32)) -> (f32, f32) {
+        let mut cands: Vec<(f32, f32)> = self.active_vps().iter().map(|v| (v.0 - o.0, v.1 - o.1)).collect();
+        match self.persp {
+            1 => cands.extend([(1.0, 0.0), (0.0, 1.0)]),
+            2 => cands.push((0.0, 1.0)),
+            _ => {}
+        }
+        let norm = |v: (f32, f32)| {
+            let l = (v.0 * v.0 + v.1 * v.1).sqrt().max(1e-6);
+            (v.0 / l, v.1 / l)
+        };
+        let d = norm(d);
+        cands.into_iter().map(norm).max_by(|a, b| (a.0 * d.0 + a.1 * d.1).abs().total_cmp(&(b.0 * d.0 + b.1 * d.1).abs())).unwrap_or(d)
+    }
+
+    /// A guide handle under the pointer (screen): 0 the symmetry centre, 1–3 a vanishing point.
+    fn guide_hit(&self, rect: Rect, p: Pos2) -> Option<usize> {
+        let near = |c: (f32, f32)| self.to_screen(rect, c).distance(p) < 10.0;
+        if self.sym_kind != SymKind::Off {
+            let s = self.sym();
+            if near((s.cx, s.cy)) {
+                return Some(0);
+            }
+        }
+        if self.persp > 0 {
+            for (i, v) in self.active_vps().into_iter().enumerate() {
+                if near(v) {
+                    return Some(i + 1);
+                }
+            }
+        }
+        if let Some(r) = self.ruler {
+            for (i, v) in r.into_iter().enumerate() {
+                if near(v) {
+                    return Some(4 + i);
+                }
+            }
+        }
+        if let Some(e) = self.ellipse_g {
+            for (i, v) in e.into_iter().enumerate() {
+                if near(v) {
+                    return Some(6 + i);
+                }
+            }
+        }
+        None
+    }
+
+    /// The ellipse guide: centre, half-axes and turn.
+    fn ellipse_geom(e: [(f32, f32); 3]) -> ((f32, f32), f32, f32, f32) {
+        let (c, a, b) = (e[0], e[1], e[2]);
+        let rx = ((a.0 - c.0).powi(2) + (a.1 - c.1).powi(2)).sqrt().max(1.0);
+        let ang = (a.1 - c.1).atan2(a.0 - c.0);
+        // the other axis: b's distance from the first axis
+        let (ux, uy) = (ang.cos(), ang.sin());
+        let ry = ((b.0 - c.0) * -uy + (b.1 - c.1) * ux).abs().max(1.0);
+        (c, rx, ry, ang)
+    }
+
+    /// The point of the ellipse guide nearest (in angle) to q.
+    fn on_ellipse(e: [(f32, f32); 3], q: (f32, f32)) -> (f32, f32) {
+        let (c, rx, ry, ang) = Self::ellipse_geom(e);
+        let (s, co) = ang.sin_cos();
+        let (dx, dy) = (q.0 - c.0, q.1 - c.1);
+        let (lx, ly) = (dx * co + dy * s, -dx * s + dy * co);
+        let t = (ly / ry).atan2(lx / rx);
+        let (px, py) = (rx * t.cos(), ry * t.sin());
+        (c.0 + px * co - py * s, c.1 + px * s + py * co)
+    }
+
+    /// Dragging a guide handle; true while one is held (the tools wait).
+    fn guide_input(&mut self, ctx: &egui::Context, resp: &egui::Response, rect: Rect, c: (f32, f32)) -> bool {
+        if self.guide_drag.is_none() && self.stroke.is_none() && resp.hovered() && ctx.input(|i| i.pointer.primary_pressed()) {
+            if let Some(o) = ctx.input(|i| i.pointer.press_origin()) {
+                self.guide_drag = self.guide_hit(rect, o);
+            }
+        }
+        let Some(h) = self.guide_drag else { return false };
+        match h {
+            0 => self.sym_c = Some(c),
+            1..=3 => self.vps[h - 1] = c,
+            4 | 5 => {
+                if let Some(r) = self.ruler.as_mut() {
+                    r[h - 4] = c;
+                }
+            }
+            6 => {
+                if let Some(e) = self.ellipse_g.as_mut() {
+                    let d = (c.0 - e[0].0, c.1 - e[0].1);
+                    for p in e.iter_mut() {
+                        *p = (p.0 + d.0, p.1 + d.1);
+                    }
+                }
+            }
+            7 | 8 => {
+                if let Some(e) = self.ellipse_g.as_mut() {
+                    e[h - 6] = c;
+                }
+            }
+            _ => {}
+        }
+        if !ctx.input(|i| i.pointer.any_down()) {
+            self.guide_drag = None;
+        }
+        true
+    }
+
+    /// The guides over the canvas: the lines of symmetry and the perspective lines.
+    fn draw_guides(&self, painter: &egui::Painter, rect: Rect) {
+        let reach = (self.doc.w as f32).hypot(self.doc.h as f32) * 2.0;
+        let line = UiStroke::new(1.0, Color32::from_rgba_unmultiplied(0, 170, 255, 170));
+        if self.sym_kind != SymKind::Off {
+            let s = self.sym();
+            let c = self.to_screen(rect, (s.cx, s.cy));
+            for a in s.rays() {
+                let e = self.to_screen(rect, (s.cx + reach * a.cos(), s.cy + reach * a.sin()));
+                painter.line_segment([c, e], line);
+            }
+            painter.circle(c, 6.0, Color32::from_rgb(0, 170, 255), UiStroke::new(1.5, Color32::WHITE));
+        }
+        if self.persp > 0 {
+            let faint = UiStroke::new(1.0, Color32::from_rgba_unmultiplied(255, 120, 40, 90));
+            let vps = self.active_vps();
+            // the horizon through the first two points
+            if self.persp >= 2 {
+                let (a, b) = (vps[0], vps[1]);
+                let d = ((b.0 - a.0) / reach, (b.1 - a.1) / reach);
+                let k = reach * 4.0;
+                painter.line_segment([self.to_screen(rect, (a.0 - d.0 * k, a.1 - d.1 * k)), self.to_screen(rect, (b.0 + d.0 * k, b.1 + d.1 * k))], UiStroke::new(1.0, Color32::from_rgba_unmultiplied(255, 120, 40, 170)));
+            } else {
+                let y = self.to_screen(rect, vps[0]).y;
+                painter.line_segment([pos2(rect.left(), y), pos2(rect.right(), y)], UiStroke::new(1.0, Color32::from_rgba_unmultiplied(255, 120, 40, 170)));
+            }
+            for v in &vps {
+                let c = self.to_screen(rect, *v);
+                for k in 0..36 {
+                    let a = k as f32 * std::f32::consts::TAU / 36.0;
+                    let e = self.to_screen(rect, (v.0 + reach * a.cos(), v.1 + reach * a.sin()));
+                    painter.line_segment([c, e], faint);
+                }
+                painter.circle(c, 6.0, Color32::from_rgb(255, 120, 40), UiStroke::new(1.5, Color32::WHITE));
+            }
+        }
+        let green = Color32::from_rgb(40, 200, 120);
+        if let Some([a, b]) = self.ruler {
+            let (sa, sb) = (self.to_screen(rect, a), self.to_screen(rect, b));
+            painter.line_segment([sa, sb], UiStroke::new(6.0, Color32::from_rgba_unmultiplied(40, 200, 120, 60)));
+            painter.line_segment([sa, sb], UiStroke::new(1.0, green));
+            for p in [sa, sb] {
+                painter.circle(p, 6.0, green, UiStroke::new(1.5, Color32::WHITE));
+            }
+        }
+        if let Some(e) = self.ellipse_g {
+            let (c, rx, ry, ang) = Self::ellipse_geom(e);
+            let (s, co) = ang.sin_cos();
+            let pts: Vec<Pos2> = (0..=96)
+                .map(|i| {
+                    let t = i as f32 / 96.0 * std::f32::consts::TAU;
+                    let (px, py) = (rx * t.cos(), ry * t.sin());
+                    self.to_screen(rect, (c.0 + px * co - py * s, c.1 + px * s + py * co))
+                })
+                .collect();
+            painter.add(egui::Shape::line(pts, UiStroke::new(1.0, green)));
+            for p in e {
+                painter.circle(self.to_screen(rect, p), 6.0, green, UiStroke::new(1.5, Color32::WHITE));
+            }
+        }
     }
 
     fn remember_colour(&mut self) {
@@ -791,6 +1272,7 @@ impl SketchApp {
     }
 
     fn save(&mut self, ctx: &egui::Context, kind: SaveKind, ask: bool) {
+        self.commit_warp();
         #[cfg(not(target_arch = "wasm32"))]
         {
             if kind == SaveKind::Project && !ask {
@@ -807,6 +1289,7 @@ impl SketchApp {
                     SaveKind::Png => ("PNG", "png"),
                     SaveKind::Jpeg => ("JPEG", "jpg"),
                     SaveKind::Psd => ("Photoshop", "psd"),
+                    SaveKind::Gif => ("GIF", "gif"),
                 };
                 if let Some(mut p) = rfd::FileDialog::new().set_file_name(&name).add_filter(filter.0, &[filter.1]).save_file() {
                     if p.extension().is_none() {
@@ -839,6 +1322,10 @@ impl SketchApp {
             SaveKind::Png => files::export_png(&self.doc),
             SaveKind::Jpeg => files::export_jpeg(&self.doc),
             SaveKind::Psd => Ok(files::export_psd(&self.doc)),
+            SaveKind::Gif => {
+                let frames: Vec<Vec<f32>> = self.frames().into_iter().map(|f| self.frame_mult(f, false)).collect();
+                files::export_gif(&self.doc, &frames, self.fps)
+            }
         }
     }
 
@@ -979,6 +1466,7 @@ impl SketchApp {
         }
         if pressed(Key::Escape) {
             self.cancel_stroke();
+            self.cancel_warp();
         }
         if pressed(Key::Delete) || pressed(Key::Backspace) {
             self.drop_moving();
@@ -986,6 +1474,7 @@ impl SketchApp {
         }
         if pressed(Key::Enter) {
             self.drop_moving();
+            self.commit_warp();
         }
     }
 
@@ -1060,6 +1549,10 @@ impl SketchApp {
                     self.save(&ctx, SaveKind::Jpeg, true);
                     ui.close();
                 }
+                if ui.add_enabled(self.frames().len() > 1, egui::Button::new(t("Export Animated GIF…"))).on_hover_text(t("The flipbook's frames (the layers) as an animation.")).clicked() {
+                    self.save(&ctx, SaveKind::Gif, true);
+                    ui.close();
+                }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     ui.separator();
@@ -1112,6 +1605,17 @@ impl SketchApp {
                 if ui.button(format!("{}   Ctrl+Shift+I", t("Invert Selection"))).clicked() {
                     self.drop_moving();
                     self.invert_selection();
+                    ui.close();
+                }
+                if ui.add_enabled(self.selection.is_some(), egui::Button::new(t("Draw Outline of Selection"))).clicked() {
+                    self.drop_moving();
+                    let width = if self.tool.has_size() { self.settings[&self.tool].size } else { self.settings[&Tool::Pen].size };
+                    let m = raster::outline_mask(&self.current_mask(), self.doc.w, self.doc.h, width);
+                    let col = self.color;
+                    let layer = self.doc.active;
+                    let u = raster::fill_mask(&mut self.doc, layer, &m, [col.r(), col.g(), col.b()], 1.0);
+                    self.pixels(u);
+                    self.remember_colour();
                     ui.close();
                 }
                 ui.separator();
@@ -1209,7 +1713,23 @@ impl SketchApp {
                     ui.close();
                 }
                 ui.separator();
+                let full = ui.ctx().content_rect();
+                if ui.button(t("Rotate View Left")).clicked() {
+                    self.turn_view(full, full.center() + self.pan, -15f32.to_radians());
+                }
+                if ui.button(t("Rotate View Right")).clicked() {
+                    self.turn_view(full, full.center() + self.pan, 15f32.to_radians());
+                }
+                if ui.add_enabled(self.rot != 0.0, egui::Button::new(t("Reset View Rotation"))).clicked() {
+                    self.rot = 0.0;
+                    ui.close();
+                }
+                ui.separator();
                 ui.checkbox(&mut self.show_panels, t("Panels"));
+                if ui.checkbox(&mut self.flip, t("Flipbook (animation)")).changed() {
+                    self.playing = false;
+                    self.rebuild = true;
+                }
                 ui.menu_button(t("Language"), |ui| {
                     for (l, n) in [(Lang::Hu, "Magyar"), (Lang::Ro, "Română"), (Lang::En, "English")] {
                         if ui.selectable_label(i18n::current() == l, n).clicked() {
@@ -1305,6 +1825,11 @@ impl SketchApp {
             self.doc_op(|d| d.layers[a].delete_mask());
             close = true;
         }
+        let clip = self.doc.layers[a].clip;
+        if row(ui, a > 0, if clip { "Release Clipping Mask" } else { "Clipping Mask" }, "↳") {
+            self.doc_op(|d| d.layers[a].clip = !clip);
+            close = true;
+        }
         ui.separator();
         if row(ui, a + 1 < n, "Move Up", "▲") {
             self.doc_op(|d| {
@@ -1361,6 +1886,9 @@ impl SketchApp {
 
     fn side_panel(&mut self, ui: &mut Ui) {
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            if self.flip {
+                self.flipbook_ui(ui);
+            }
             ui.heading(t("Colour"));
             let mut c = self.color;
             if egui::widgets::color_picker::color_picker_color32(ui, &mut c, egui::widgets::color_picker::Alpha::Opaque) {
@@ -1373,6 +1901,34 @@ impl SketchApp {
                     if swatch(ui, col, self.color == col).clicked() {
                         self.color = col;
                     }
+                }
+            });
+            ui.horizontal(|ui| {
+                if ui.button(t("Random colour")).clicked() {
+                    // a pleasant random colour: any hue, moderate saturation and lightness
+                    let r = (ui.ctx().input(|i| i.time) * 1e6) as u64;
+                    let mut x = r ^ 0x9E37_79B9_7F4A_7C15;
+                    let mut next = || {
+                        x ^= x << 13;
+                        x ^= x >> 7;
+                        x ^= x << 17;
+                        (x % 10_000) as f32 / 10_000.0
+                    };
+                    let (h, sat, l) = (next(), 0.45 + 0.45 * next(), 0.35 + 0.35 * next());
+                    self.color = hsl(h, sat, l);
+                }
+            });
+            egui::CollapsingHeader::new(t("Colour library")).id_salt("colour-library").show(ui, |ui| {
+                for (name, row) in colour_library() {
+                    ui.label(egui::RichText::new(t(name)).small().weak());
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
+                        for col in row {
+                            if swatch(ui, col, self.color == col).clicked() {
+                                self.color = col;
+                            }
+                        }
+                    });
                 }
             });
             if !self.recent.is_empty() {
@@ -1397,7 +1953,7 @@ impl SketchApp {
                 if tool.has_size() {
                     ui.add(egui::Slider::new(&mut s.size, 1.0..=500.0).logarithmic(true).text(t("Size")));
                 }
-                if tool.paints() || tool.shape().is_some() || tool == Tool::Fill {
+                if tool.paints() || tool.shape().is_some() || tool == Tool::Fill || tool == Tool::LassoFill {
                     let mut op = s.opacity * 100.0;
                     if ui.add(egui::Slider::new(&mut op, 1.0..=100.0).suffix("%").text(t("Opacity"))).changed() {
                         s.opacity = op / 100.0;
@@ -1409,6 +1965,27 @@ impl SketchApp {
                         s.hardness = hd / 100.0;
                     }
                 }
+            }
+            if !nibs(tool).is_empty() {
+                ui.label(egui::RichText::new(t(if tool == Tool::Pencil { "Pencils" } else { "Pens" })).strong());
+                let sel = self.nib_sel.get(&tool).copied();
+                let mut pick = None;
+                for (i, n) in nibs(tool).iter().enumerate() {
+                    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::click());
+                    let vis = ui.style().interact_selectable(&resp, sel == Some(i));
+                    if sel == Some(i) || resp.hovered() {
+                        ui.painter().rect_filled(r, CornerRadius::same(3), vis.weak_bg_fill);
+                    }
+                    ui.painter().text(r.left_center() + vec2(6.0, 0.0), Align2::LEFT_CENTER, t(n.name), FontId::proportional(13.0), vis.text_color());
+                    nib_preview(ui.painter(), Rect::from_min_max(pos2(r.right() - 78.0, r.top() + 3.0), pos2(r.right() - 4.0, r.bottom() - 3.0)), n, ui.visuals().text_color());
+                    if resp.clicked() {
+                        pick = Some(i);
+                    }
+                }
+                if let Some(i) = pick {
+                    self.use_nib(tool, i);
+                }
+                ui.add_space(4.0);
             }
             if tool.paints() {
                 let mut tip = self.tips.get(&tool).copied().unwrap_or(Tip::Round);
@@ -1427,6 +2004,24 @@ impl SketchApp {
                 }
                 ui.checkbox(&mut self.pressure_size, t("Pressure changes size"));
                 ui.checkbox(&mut self.pressure_alpha, t("Pressure changes opacity"));
+                if matches!(tool, Tool::Pen | Tool::Brush | Tool::Marker) {
+                    let ex = self.nib_extra.entry(tool).or_default();
+                    let mut tp = ex.taper * 100.0;
+                    if ui.add(egui::Slider::new(&mut tp, 0.0..=100.0).suffix("%").text(t("Taper"))).changed() {
+                        ex.taper = tp / 100.0;
+                    }
+                    let mut sp = ex.speed * 100.0;
+                    if ui.add(egui::Slider::new(&mut sp, 0.0..=100.0).suffix("%").text(t("Thinner when fast"))).changed() {
+                        ex.speed = sp / 100.0;
+                    }
+                }
+                ui.checkbox(&mut self.predictive, t("Predictive stroke")).on_hover_text(t("Straight lines, circles, ellipses, triangles and rectangles drawn by hand come out clean."));
+                if self.predictive {
+                    ui.checkbox(&mut self.predictive_snap, t("Snap lines to 0°, 45° and 90°"));
+                }
+            }
+            if tool.paints() || tool.shape().is_some() {
+                self.guides_ui(ui);
             }
             if tool == Tool::Fill {
                 let mut tol = self.tolerance as f32;
@@ -1469,6 +2064,20 @@ impl SketchApp {
                 if let Some(r) = self.selection {
                     ui.label(format!("{} × {} {}", r.width(), r.height(), t("pixels")));
                 }
+            }
+            if tool == Tool::Transform {
+                ui.label(egui::RichText::new(t("Drag inside to move, a corner to resize, outside to turn. Ctrl+corner: distort. Shift: from the centre / in 15° steps.")).small().weak());
+                ui.horizontal(|ui| {
+                    if ui.add_enabled(self.warp.is_some(), egui::Button::new(t("Apply"))).clicked() {
+                        self.commit_warp();
+                    }
+                    if ui.add_enabled(self.warp.is_some(), egui::Button::new(t("Cancel"))).clicked() {
+                        self.cancel_warp();
+                    }
+                });
+            }
+            if tool == Tool::LassoFill {
+                ui.label(egui::RichText::new(t("Draw around an area to fill it with the colour.")).small().weak());
             }
             if tool == Tool::Text {
                 ui.add(egui::Slider::new(&mut self.text_size, 6.0..=600.0).logarithmic(true).text(t("Size")));
@@ -1530,7 +2139,8 @@ impl SketchApp {
                             r.request_focus();
                         }
                     } else {
-                        let r = ui.selectable_label(i == a, lname.as_str());
+                        let shown = if self.doc.layers[i].clip { format!("↳ {lname}") } else { lname.clone() };
+                        let r = ui.selectable_label(i == a, shown);
                         if r.clicked() {
                             pick = Some(i);
                         }
@@ -1567,6 +2177,79 @@ impl SketchApp {
                 self.rename = Some((i, self.doc.layers[i].name.clone()));
             }
         });
+    }
+
+    /// Symmetry and perspective, under the drawing tools.
+    fn guides_ui(&mut self, ui: &mut Ui) {
+        ui.separator();
+        ui.label(egui::RichText::new(t("Guides")).strong());
+        let name = |k: SymKind| match k {
+            SymKind::Off => "Off",
+            SymKind::LeftRight => "Left–right",
+            SymKind::TopBottom => "Top–bottom",
+            SymKind::Both => "Four ways",
+            SymKind::Radial(_) => "Radial",
+            SymKind::Kaleido(_) => "Kaleidoscope",
+            SymKind::Free => "Free angle",
+        };
+        let mut k = self.sym_kind;
+        ui.horizontal(|ui| {
+            ui.label(t("Symmetry"));
+            egui::ComboBox::from_id_salt("sym").selected_text(t(name(k))).show_ui(ui, |ui| {
+                for o in [SymKind::Off, SymKind::LeftRight, SymKind::TopBottom, SymKind::Both, SymKind::Free, SymKind::Radial(0), SymKind::Kaleido(0)] {
+                    ui.selectable_value(&mut k, o, t(name(o)));
+                }
+            });
+        });
+        self.sym_kind = k;
+        if matches!(k, SymKind::Radial(_) | SymKind::Kaleido(_)) {
+            ui.add(egui::Slider::new(&mut self.sym_n, 2..=16).text(t("Sectors")));
+        }
+        if k == SymKind::Free {
+            ui.add(egui::Slider::new(&mut self.sym_angle, -90.0..=90.0).suffix("°").text(t("Angle")));
+        }
+        if k != SymKind::Off && self.sym_c.is_some() && ui.small_button(t("Centre on the canvas")).clicked() {
+            self.sym_c = None;
+        }
+        let pname = |n: u8| match n {
+            0 => "Off",
+            1 => "1-point",
+            2 => "2-point",
+            _ => "3-point",
+        };
+        let mut pn = self.persp;
+        ui.horizontal(|ui| {
+            ui.label(t("Perspective"));
+            egui::ComboBox::from_id_salt("persp").selected_text(t(pname(pn))).show_ui(ui, |ui| {
+                for o in 0..=3u8 {
+                    ui.selectable_value(&mut pn, o, t(pname(o)));
+                }
+            });
+        });
+        if pn != self.persp {
+            self.persp = pn;
+            if pn > 0 {
+                self.reset_vps();
+            }
+        }
+        if self.persp > 0 {
+            ui.checkbox(&mut self.persp_snap, t("Snap strokes to the perspective"));
+            if ui.small_button(t("Reset vanishing points")).clicked() {
+                self.reset_vps();
+            }
+        }
+        let (w, h) = (self.doc.w as f32, self.doc.h as f32);
+        let mut on = self.ruler.is_some();
+        if ui.checkbox(&mut on, t("Ruler")).on_hover_text(t("Strokes begun near the ruler follow its edge.")).changed() {
+            self.ruler = on.then_some([(w * 0.2, h * 0.5), (w * 0.8, h * 0.5)]);
+        }
+        let mut on = self.ellipse_g.is_some();
+        if ui.checkbox(&mut on, t("Ellipse guide")).on_hover_text(t("Strokes begun near the ellipse follow it.")).changed() {
+            self.ellipse_g = on.then_some([(w * 0.5, h * 0.5), (w * 0.75, h * 0.5), (w * 0.5, h * 0.35)]);
+        }
+        if k != SymKind::Off || self.persp > 0 || self.ruler.is_some() || self.ellipse_g.is_some() {
+            ui.label(egui::RichText::new(t("Drag the round handles to move the guides.")).small().weak());
+        }
     }
 
     fn status(&mut self, ui: &mut Ui, hover: Option<(f32, f32)>) {
@@ -1611,18 +2294,25 @@ impl SketchApp {
             }
             if let Some(m) = &multi {
                 self.pan += m.translation_delta;
+                if m.rotation_delta.abs() > 1e-4 {
+                    self.turn_view(rect, m.center_pos, m.rotation_delta);
+                }
             }
         }
         let origin = self.origin(rect);
-        let img_rect = Rect::from_min_size(origin, size * self.zoom);
+        let _ = origin;
+        let corners = self.screen_quad(rect, (0.0, 0.0), (size.x, size.y));
         // transparency checkerboard, then the layers
         let checker = self.checker(&ctx);
         let cells = size / 16.0;
-        painter.image(checker, img_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(cells.x / 2.0, cells.y / 2.0)), Color32::WHITE);
+        quad_image(&painter, checker, corners, Rect::from_min_max(pos2(0.0, 0.0), pos2(cells.x / 2.0, cells.y / 2.0)));
         if let Some(tex) = &self.comp {
-            painter.image(tex.id(), img_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            quad_image(&painter, tex.id(), corners, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)));
         }
-        painter.rect_stroke(img_rect, 0, UiStroke::new(1.0, Color32::from_black_alpha(120)), egui::StrokeKind::Outside);
+        let mut border = corners.to_vec();
+        border.push(corners[0]);
+        painter.add(egui::Shape::line(border, UiStroke::new(1.0, Color32::from_black_alpha(120))));
+        self.draw_guides(&painter, rect);
 
         // pressure from a pen or touch, when the device reports it
         ctx.input(|i| {
@@ -1648,12 +2338,22 @@ impl SketchApp {
             }
         } else if panning {
             if resp.dragged() {
-                self.pan += resp.drag_delta();
+                if shift {
+                    // Shift-drag with the hand turns the view about its middle
+                    if let Some(p) = resp.interact_pointer_pos() {
+                        let pivot = rect.center() + self.pan;
+                        let (a, b) = (p - resp.drag_delta() - pivot, p - pivot);
+                        self.turn_view(rect, pivot, b.y.atan2(b.x) - a.y.atan2(a.x));
+                    }
+                } else {
+                    self.pan += resp.drag_delta();
+                }
             }
         } else if let Some(p) = pointer {
             let c = self.to_canvas(rect, p);
             let tool = self.tool;
-            if (tool == Tool::Eyedropper || (alt && tool.paints())) && (resp.clicked() || resp.dragged()) {
+            if self.guide_input(&ctx, &resp, rect, c) {
+            } else if (tool == Tool::Eyedropper || (alt && tool.paints())) && (resp.clicked() || resp.dragged()) {
                 if c.0 >= 0.0 && c.1 >= 0.0 {
                     let s = self.doc.sample(c.0 as u32, c.1 as u32);
                     if s[3] > 0 {
@@ -1735,6 +2435,110 @@ impl SketchApp {
                         self.drop_moving();
                     }
                 }
+            } else if tool == Tool::Transform {
+                let pressed = resp.hovered() && ctx.input(|i| i.pointer.primary_pressed());
+                if pressed && self.warp.is_none() && self.doc.layers[self.doc.active].visible {
+                    let src = self.sel_or_all();
+                    let layer = self.doc.active;
+                    let mask = self.sel_mask.clone();
+                    let w = Warp::begin(&mut self.doc, layer, src, mask.as_deref().map(|m| m.as_slice()));
+                    self.mark(w.src);
+                    self.warp = Some(w);
+                }
+                if let (true, Some(w)) = (pressed, self.warp.as_ref()) {
+                    let q = w.quad;
+                    let o = ctx.input(|i| i.pointer.press_origin()).unwrap_or(p);
+                    let corner = (0..4).find(|&i| self.to_screen(rect, q[i]).distance(o) < 12.0);
+                    let oc = self.to_canvas(rect, o);
+                    let inside = raster::point_in_polygon(&q, oc);
+                    let h = match corner {
+                        Some(i) => i as u8,
+                        None if inside => 4,
+                        None => 5,
+                    };
+                    self.warp_drag = Some((h, oc, q));
+                }
+                if let Some((h, start, q0)) = self.warp_drag {
+                    let ctrl = ctx.input(|i| i.modifiers.command || i.modifiers.ctrl);
+                    let (dx, dy) = (c.0 - start.0, c.1 - start.1);
+                    let mut q = q0;
+                    match h {
+                        0..=3 if ctrl => {
+                            // distort: the corner goes where it is put
+                            let i = h as usize;
+                            q[i] = (q0[i].0 + dx, q0[i].1 + dy);
+                        }
+                        0..=3 => {
+                            // scale in proportion, from the opposite corner (Shift: from the centre)
+                            let i = h as usize;
+                            let o = if shift {
+                                ((q0[0].0 + q0[2].0) / 2.0, (q0[0].1 + q0[2].1) / 2.0)
+                            } else {
+                                q0[(i + 2) % 4]
+                            };
+                            let (vx, vy) = (q0[i].0 - o.0, q0[i].1 - o.1);
+                            let l2 = (vx * vx + vy * vy).max(1e-3);
+                            let f = (((c.0 - o.0) * vx + (c.1 - o.1) * vy) / l2).max(0.01);
+                            for k in 0..4 {
+                                q[k] = (o.0 + (q0[k].0 - o.0) * f, o.1 + (q0[k].1 - o.1) * f);
+                            }
+                        }
+                        4 => {
+                            for k in 0..4 {
+                                q[k] = (q0[k].0 + dx, q0[k].1 + dy);
+                            }
+                        }
+                        _ => {
+                            // turn about the centre (Shift: in 15° steps)
+                            let m = (q0.iter().map(|p| p.0).sum::<f32>() / 4.0, q0.iter().map(|p| p.1).sum::<f32>() / 4.0);
+                            let mut a = (c.1 - m.1).atan2(c.0 - m.0) - (start.1 - m.1).atan2(start.0 - m.0);
+                            if shift {
+                                let st = 15f32.to_radians();
+                                a = (a / st).round() * st;
+                            }
+                            let (sn, cs) = a.sin_cos();
+                            for k in 0..4 {
+                                let (x, y) = (q0[k].0 - m.0, q0[k].1 - m.1);
+                                q[k] = (m.0 + x * cs - y * sn, m.1 + x * sn + y * cs);
+                            }
+                        }
+                    }
+                    let ch = self.warp.as_mut().map(|w| w.place(&mut self.doc, q));
+                    if let Some(ch) = ch {
+                        self.mark(ch);
+                    }
+                    if !ctx.input(|i| i.pointer.any_down()) {
+                        self.warp_drag = None;
+                    }
+                }
+            } else if tool == Tool::LassoFill {
+                if resp.drag_started() {
+                    let o = ctx.input(|i| i.pointer.press_origin()).unwrap_or(p);
+                    self.lfill = vec![self.to_canvas(rect, o)];
+                }
+                if !self.lfill.is_empty() {
+                    let last = *self.lfill.last().unwrap();
+                    if (c.0 - last.0).abs() + (c.1 - last.1).abs() >= 1.0 / self.zoom.max(0.01) {
+                        self.lfill.push(c);
+                    }
+                    if resp.drag_stopped() || !ctx.input(|i| i.pointer.any_down()) {
+                        let pts = std::mem::take(&mut self.lfill);
+                        if pts.len() > 2 {
+                            let mut m = raster::polygon_mask(&pts, self.doc.w, self.doc.h);
+                            if self.selection.is_some() {
+                                for (v, s) in m.iter_mut().zip(self.current_mask()) {
+                                    *v = (*v as u32 * s as u32 / 255) as u8;
+                                }
+                            }
+                            let col = self.color;
+                            let op = self.settings[&Tool::LassoFill].opacity;
+                            let layer = self.doc.active;
+                            let u = raster::fill_mask(&mut self.doc, layer, &m, [col.r(), col.g(), col.b()], op);
+                            self.pixels(u);
+                            self.remember_colour();
+                        }
+                    }
+                }
             } else if tool == Tool::Gradient {
                 if resp.drag_started() {
                     let o = ctx.input(|i| i.pointer.press_origin()).unwrap_or(p);
@@ -1791,8 +2595,35 @@ impl SketchApp {
                         let mut st = Stroke::begin(&self.doc, self.doc.active, self.brush());
                         st.clip = self.selection;
                         st.sel = self.sel_mask.clone();
+                        st.sym = self.sym();
                         self.stroke = Some(st);
-                        self.smooth = Some(ctx.input(|i| i.pointer.press_origin()).unwrap_or(p));
+                        let o = ctx.input(|i| i.pointer.press_origin()).unwrap_or(p);
+                        self.smooth = Some(o);
+                        self.stroke_start = Some(self.to_canvas(rect, o));
+                        self.persp_lock = None;
+                        self.ell_lock = false;
+                        self.stroke_pts.clear();
+                        // begun near the ruler or the ellipse guide: the stroke follows it
+                        let sc = self.to_canvas(rect, o);
+                        let near = 24.0 / self.zoom.max(0.01);
+                        if let Some([a, b]) = self.ruler {
+                            let (vx, vy) = (b.0 - a.0, b.1 - a.1);
+                            let l = (vx * vx + vy * vy).sqrt().max(1e-3);
+                            let d = (vx / l, vy / l);
+                            let along = (sc.0 - a.0) * d.0 + (sc.1 - a.1) * d.1;
+                            let foot = (a.0 + d.0 * along, a.1 + d.1 * along);
+                            if (sc.0 - foot.0).hypot(sc.1 - foot.1) < near {
+                                self.persp_lock = Some((foot, d));
+                            }
+                        }
+                        if self.persp_lock.is_none() {
+                            if let Some(e) = self.ellipse_g {
+                                let on = Self::on_ellipse(e, sc);
+                                if (sc.0 - on.0).hypot(sc.1 - on.1) < near {
+                                    self.ell_lock = true;
+                                }
+                            }
+                        }
                         self.remember_colour();
                     }
                 }
@@ -1805,20 +2636,57 @@ impl SketchApp {
                     let c = self.to_canvas(rect, np);
                     let ps = if self.pressure_size { self.pressure } else { 1.0 };
                     let pa = if self.pressure_alpha { self.pressure } else { 1.0 };
-                    let changed = s.to(&mut self.doc, c.0, c.1, ps, pa);
-                    if !changed.is_empty() {
-                        self.mark(changed);
+                    let done = resp.drag_stopped() || resp.clicked() || !ctx.input(|i| i.pointer.any_down());
+                    // perspective: once the stroke's heading is clear it keeps to that perspective line
+                    let snap = self.persp > 0 && self.persp_snap && !self.ell_lock;
+                    let o = self.stroke_start.unwrap_or(c);
+                    if snap && self.persp_lock.is_none() && (self.to_screen(rect, c).distance(self.to_screen(rect, o)) > 8.0 || done) {
+                        let d = self.persp_dir(o, (c.0 - o.0, c.1 - o.1));
+                        self.persp_lock = Some((o, d));
                     }
-                    if resp.drag_stopped() || resp.clicked() || !ctx.input(|i| i.pointer.any_down()) {
+                    let ell = self.ellipse_g.filter(|_| self.ell_lock);
+                    let place = |lock: Option<((f32, f32), (f32, f32))>, q: (f32, f32)| match (lock, ell) {
+                        (Some((o, d)), _) => {
+                            let t = (q.0 - o.0) * d.0 + (q.1 - o.1) * d.1;
+                            (o.0 + d.0 * t, o.1 + d.1 * t)
+                        }
+                        (None, Some(e)) => Self::on_ellipse(e, q),
+                        (None, None) => q,
+                    };
+                    if !snap || self.persp_lock.is_some() {
+                        let c = place(self.persp_lock, c);
+                        self.stroke_pts.push(c);
+                        let changed = s.to(&mut self.doc, c.0, c.1, ps, pa);
+                        if !changed.is_empty() {
+                            self.mark(changed);
+                        }
+                    }
+                    if done {
                         // finish the line at the pointer itself
-                        let end = self.to_canvas(rect, p);
+                        let end = place(self.persp_lock, self.to_canvas(rect, p));
+                        self.stroke_pts.push(end);
                         let changed = s.to(&mut self.doc, end.0, end.1, ps, pa);
                         if !changed.is_empty() {
                             self.mark(changed);
                         }
-                        let u = s.end(&self.doc);
-                        self.pixels(u);
+                        let shape = if self.predictive && self.persp_lock.is_none() && !self.ell_lock { raster::predict(&self.stroke_pts, self.predictive_snap) } else { None };
+                        if let Some(shape) = shape {
+                            // predictive stroke: the clean shape in place of the hand-drawn one
+                            let (layer, dirty, brush, sym, clip) = (s.layer, s.dirty, s.brush, s.sym, s.clip);
+                            self.doc.layers[layer].px = s.before;
+                            self.mark(dirty);
+                            let u = raster::stroke_path_sym(&mut self.doc, layer, brush, &shape, clip, sym);
+                            let u = self.masked(u);
+                            self.pixels(u);
+                        } else {
+                            let u = s.end(&self.doc);
+                            self.pixels(u);
+                        }
                         self.smooth = None;
+                        self.persp_lock = None;
+                        self.ell_lock = false;
+                        self.stroke_start = None;
+                        self.stroke_pts.clear();
                     } else {
                         self.stroke = Some(s);
                     }
@@ -1846,7 +2714,8 @@ impl SketchApp {
                             let u = self.masked(u);
                             self.pixels(u);
                         } else {
-                            let u = raster::stroke_path(&mut self.doc, layer, brush, &raster::shape_points(kind, a, b), self.selection);
+                            let sym = self.sym();
+                            let u = raster::stroke_path_sym(&mut self.doc, layer, brush, &raster::shape_points(kind, a, b), self.selection, sym);
                             let u = self.masked(u);
                             self.pixels(u);
                         }
@@ -1865,7 +2734,8 @@ impl SketchApp {
             if self.shape_fill && kind != Shape::Line {
                 let (sa, sb) = (self.to_screen(rect, a), self.to_screen(rect, b));
                 if kind == Shape::Rect {
-                    painter.rect_filled(Rect::from_two_pos(sa, sb), 0, self.color);
+                    let _ = (sa, sb);
+                    painter.add(egui::Shape::convex_polygon(self.screen_quad(rect, a, b).to_vec(), self.color, UiStroke::NONE));
                 } else {
                     painter.add(egui::Shape::convex_polygon(pts, self.color, UiStroke::NONE));
                 }
@@ -1886,8 +2756,8 @@ impl SketchApp {
         self.text_preview(&ctx);
         if let Some(d) = &self.text_dlg {
             if let (Some(m), Some(tex)) = (&d.mask, &d.tex) {
-                let r = Rect::from_min_max(self.to_screen(rect, (m.x as f32, m.y as f32)), self.to_screen(rect, ((m.x + m.w as i64) as f32, (m.y + m.h as i64) as f32)));
-                painter.image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+                let q = self.screen_quad(rect, (m.x as f32, m.y as f32), ((m.x + m.w as i64) as f32, (m.y + m.h as i64) as f32));
+                quad_image(&painter, tex.id(), q, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)));
             }
             let p = self.to_screen(rect, d.pos);
             let h = d.size * self.zoom;
@@ -1925,8 +2795,8 @@ impl SketchApp {
         } else {
             let sel = self.moving.as_ref().filter(|_| self.selection.is_some()).map(|m| m.dst).or(self.selection);
             if let Some(r) = sel.filter(|r| !r.is_empty()) {
-                let sr = Rect::from_min_max(self.to_screen(rect, (r.x0 as f32, r.y0 as f32)), self.to_screen(rect, (r.x1 as f32, r.y1 as f32)));
-                let pts = [sr.left_top(), sr.right_top(), sr.right_bottom(), sr.left_bottom(), sr.left_top()];
+                let q = self.screen_quad(rect, (r.x0 as f32, r.y0 as f32), (r.x1 as f32, r.y1 as f32));
+                let pts = [q[0], q[1], q[2], q[3], q[0]];
                 for w in pts.windows(2) {
                     ants(&painter, w[0], w[1], phase);
                 }
@@ -1935,14 +2805,30 @@ impl SketchApp {
         }
         // a rectangle being added to or taken from the selection
         if let (Some(a), Some(b), true) = (self.sel_start, self.shape_end, self.sel_op != SelOp::Replace) {
-            let r = Rect::from_two_pos(self.to_screen(rect, a), self.to_screen(rect, b));
-            painter.rect_stroke(r, 0, UiStroke::new(1.0, if self.sel_op == SelOp::Add { Color32::WHITE } else { Color32::from_rgb(255, 120, 120) }), egui::StrokeKind::Middle);
+            let q = self.screen_quad(rect, a, b);
+            painter.add(egui::Shape::closed_line(q.to_vec(), UiStroke::new(1.0, if self.sel_op == SelOp::Add { Color32::WHITE } else { Color32::from_rgb(255, 120, 120) })));
         }
         // the lasso being drawn
         if self.lasso.len() > 1 {
             let pts: Vec<Pos2> = self.lasso.iter().map(|&q| self.to_screen(rect, q)).collect();
             painter.add(egui::Shape::line(pts.clone(), UiStroke::new(2.5, Color32::from_black_alpha(150))));
             painter.add(egui::Shape::line(pts, UiStroke::new(1.0, Color32::WHITE)));
+        }
+        // the outline being filled
+        if self.lfill.len() > 1 {
+            let pts: Vec<Pos2> = self.lfill.iter().map(|&q| self.to_screen(rect, q)).collect();
+            painter.add(egui::Shape::line(pts, UiStroke::new(2.0, self.color)));
+        }
+        // the transform's frame and handles
+        if let Some(w) = &self.warp {
+            let q: Vec<Pos2> = w.quad.iter().map(|&c| self.to_screen(rect, c)).collect();
+            let mut closed = q.clone();
+            closed.push(q[0]);
+            painter.add(egui::Shape::line(closed.clone(), UiStroke::new(2.5, Color32::from_black_alpha(150))));
+            painter.add(egui::Shape::line(closed, UiStroke::new(1.0, Color32::WHITE)));
+            for c in &q {
+                painter.rect(Rect::from_center_size(*c, vec2(9.0, 9.0)), 0, Color32::WHITE, UiStroke::new(1.0, Color32::BLACK), egui::StrokeKind::Middle);
+            }
         }
         // the brush outline
         if let Some(hp) = hover_screen {
@@ -1961,7 +2847,7 @@ impl SketchApp {
                 ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
             }
         }
-        if self.stroke.is_some() || self.moving.is_some() {
+        if self.stroke.is_some() || self.moving.is_some() || self.warp_drag.is_some() || self.guide_drag.is_some() {
             ctx.request_repaint();
         }
         hover
@@ -1990,13 +2876,39 @@ impl SketchApp {
         rect.center() + self.pan - size / 2.0
     }
 
+    /// Canvas pixels from a screen point; the view may be zoomed, moved and turned.
     fn to_canvas(&self, rect: Rect, p: Pos2) -> (f32, f32) {
-        let o = self.origin(rect);
-        ((p.x - o.x) / self.zoom, (p.y - o.y) / self.zoom)
+        let pivot = rect.center() + self.pan;
+        let (s, c) = (-self.rot).sin_cos();
+        let d = (p - pivot) / self.zoom;
+        let (x, y) = (d.x * c - d.y * s, d.x * s + d.y * c);
+        (x + self.doc.w as f32 / 2.0, y + self.doc.h as f32 / 2.0)
     }
 
     fn to_screen(&self, rect: Rect, c: (f32, f32)) -> Pos2 {
-        self.origin(rect) + vec2(c.0, c.1) * self.zoom
+        if self.rot == 0.0 {
+            return self.origin(rect) + vec2(c.0, c.1) * self.zoom;
+        }
+        let pivot = rect.center() + self.pan;
+        let (s, co) = self.rot.sin_cos();
+        let (x, y) = ((c.0 - self.doc.w as f32 / 2.0) * self.zoom, (c.1 - self.doc.h as f32 / 2.0) * self.zoom);
+        pivot + vec2(x * co - y * s, x * s + y * co)
+    }
+
+    /// A canvas rectangle on screen (turned with the view), as its four corners.
+    fn screen_quad(&self, rect: Rect, a: (f32, f32), b: (f32, f32)) -> [Pos2; 4] {
+        [self.to_screen(rect, a), self.to_screen(rect, (b.0, a.1)), self.to_screen(rect, b), self.to_screen(rect, (a.0, b.1))]
+    }
+
+    /// Turn the view by `a` radians about a screen point.
+    fn turn_view(&mut self, rect: Rect, about: Pos2, a: f32) {
+        let before = self.to_canvas(rect, about);
+        self.rot = (self.rot + a).rem_euclid(std::f32::consts::TAU);
+        if self.rot.abs() < 1e-4 || (self.rot - std::f32::consts::TAU).abs() < 1e-4 {
+            self.rot = 0.0;
+        }
+        let after = self.to_screen(rect, before);
+        self.pan += about - after;
     }
 
     // ---- dialogs ----
@@ -2299,6 +3211,7 @@ fn mime(kind: SaveKind) -> &'static str {
         SaveKind::Png => "image/png",
         SaveKind::Jpeg => "image/jpeg",
         SaveKind::Psd => "image/vnd.adobe.photoshop",
+        SaveKind::Gif => "image/gif",
     }
 }
 
@@ -2316,6 +3229,96 @@ fn constrain(kind: Shape, a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
             let m = dx.abs().max(dy.abs());
             (a.0 + m * dx.signum(), a.1 + m * dy.signum())
         }
+    }
+}
+
+/// A colour from hue, saturation and lightness (0..1).
+fn hsl(h: f32, s: f32, l: f32) -> Color32 {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let hp = (h.fract() * 6.0).max(0.0);
+    let x = c * (1.0 - (hp % 2.0 - 1.0).abs());
+    let (r, g, b) = match hp as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    let m = l - c / 2.0;
+    let to = |v: f32| ((v + m).clamp(0.0, 1.0) * 255.0).round() as u8;
+    Color32::from_rgb(to(r), to(g), to(b))
+}
+
+/// The colour library: marker-style families, light to dark.
+fn colour_library() -> Vec<(&'static str, Vec<Color32>)> {
+    let greys = |tint: (f32, f32, f32)| -> Vec<Color32> {
+        (0..11)
+            .map(|i| {
+                let v = 0.97 - i as f32 * 0.085;
+                let ch = |t: f32| ((v + t * (1.0 - v) * 0.6).clamp(0.0, 1.0) * 255.0) as u8;
+                Color32::from_rgb(ch(tint.0), ch(tint.1), ch(tint.2))
+            })
+            .collect()
+    };
+    let family = |h: f32, s: f32| -> Vec<Color32> { [0.9, 0.8, 0.68, 0.56, 0.45, 0.34, 0.24].iter().map(|&l| hsl(h, s, l)).collect() };
+    vec![
+        ("Cool greys", greys((-0.05, 0.0, 0.08))),
+        ("Warm greys", greys((0.08, 0.03, -0.05))),
+        ("Neutral greys", greys((0.0, 0.0, 0.0))),
+        ("Skin tones", [(0.07, 0.55, 0.88), (0.07, 0.5, 0.8), (0.06, 0.45, 0.7), (0.06, 0.4, 0.6), (0.05, 0.38, 0.48), (0.05, 0.35, 0.38), (0.04, 0.3, 0.28)].iter().map(|&(h, s, l)| hsl(h, s, l)).collect()),
+        ("Reds", family(0.0, 0.75)),
+        ("Oranges", family(0.07, 0.85)),
+        ("Yellows", family(0.14, 0.9)),
+        ("Yellow greens", family(0.22, 0.6)),
+        ("Greens", family(0.36, 0.55)),
+        ("Blue greens", family(0.48, 0.6)),
+        ("Blues", family(0.6, 0.7)),
+        ("Blue violets", family(0.7, 0.55)),
+        ("Violets", family(0.8, 0.5)),
+        ("Pinks", family(0.92, 0.7)),
+        ("Earth tones", [(0.08, 0.35, 0.75), (0.08, 0.35, 0.6), (0.07, 0.4, 0.45), (0.07, 0.45, 0.33), (0.06, 0.4, 0.22), (0.1, 0.25, 0.4), (0.12, 0.2, 0.3)].iter().map(|&(h, s, l)| hsl(h, s, l)).collect()),
+    ]
+}
+
+/// A picture drawn on any four corners (the turned view).
+fn quad_image(p: &egui::Painter, tex: egui::TextureId, q: [Pos2; 4], uv: Rect) {
+    let mut m = egui::Mesh::with_texture(tex);
+    let uvs = [uv.left_top(), uv.right_top(), uv.right_bottom(), uv.left_bottom()];
+    for i in 0..4 {
+        m.vertices.push(egui::epaint::Vertex { pos: q[i], uv: uvs[i], color: Color32::WHITE });
+    }
+    m.indices.extend([0, 1, 2, 0, 2, 3]);
+    p.add(egui::Shape::mesh(m));
+}
+
+/// A little wavy line showing how a nib draws.
+fn nib_preview(p: &egui::Painter, r: Rect, n: &Nib, col: Color32) {
+    let k = 18;
+    let pts: Vec<Pos2> = (0..=k)
+        .map(|i| {
+            let f = i as f32 / k as f32;
+            pos2(r.left() + f * r.width(), r.center().y + (f * std::f32::consts::TAU).sin() * r.height() * 0.3)
+        })
+        .collect();
+    let w = n.size.clamp(1.0, 10.0) * 0.6 + 0.4;
+    let a = (n.opacity * if n.tip == Tip::Graphite { 0.75 } else { 1.0 } * 255.0) as u8;
+    let c = Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), a);
+    for (i, s) in pts.windows(2).enumerate() {
+        let f = i as f32 / k as f32;
+        // taper and speed show as a thinner start and middle
+        let mut ww = w;
+        if n.taper > 0.0 {
+            ww *= 0.3 + 0.7 * (f / (0.35 * n.taper)).min(1.0);
+        }
+        if n.speed > 0.0 {
+            ww *= 1.0 - 0.45 * n.speed * (f * std::f32::consts::PI).sin();
+        }
+        if n.tip == Tip::Flat {
+            let d = (s[1] - s[0]).normalized();
+            ww = w * (0.3 + 0.7 * (d.x + d.y).abs() / std::f32::consts::SQRT_2);
+        }
+        p.line_segment([s[0], s[1]], UiStroke::new(ww.max(0.6), c));
     }
 }
 
@@ -2426,6 +3429,16 @@ fn tool_icon(p: &egui::Painter, r: Rect, tool: Tool, c: Color32) {
         Tool::Ellipse => {
             p.add(egui::Shape::ellipse_stroke(r.center(), vec2(r.width() * 0.45, r.height() * 0.32), s));
         }
+        Tool::Transform => {
+            p.rect_stroke(Rect::from_min_max(at(0.2, 0.2), at(0.8, 0.8)), 0, s, egui::StrokeKind::Middle);
+            for (x, y) in [(0.2, 0.2), (0.8, 0.2), (0.8, 0.8), (0.2, 0.8)] {
+                p.rect_filled(Rect::from_center_size(at(x, y), vec2(4.0, 4.0)), 0, c);
+            }
+        }
+        Tool::LassoFill => {
+            let pts: Vec<Pos2> = [(0.2, 0.3), (0.5, 0.12), (0.85, 0.3), (0.75, 0.7), (0.35, 0.85), (0.15, 0.6)].iter().map(|&(x, y)| at(x, y)).collect();
+            p.add(egui::Shape::convex_polygon(pts, c.gamma_multiply(0.6), s));
+        }
         Tool::Hand => {
             line(&[(0.3, 0.9), (0.15, 0.55), (0.25, 0.5), (0.35, 0.65), (0.35, 0.15), (0.45, 0.15), (0.45, 0.5)]);
             line(&[(0.45, 0.1), (0.55, 0.1), (0.55, 0.5)]);
@@ -2439,6 +3452,11 @@ impl eframe::App for SketchApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.poll_io(&ctx);
+        self.flip_tick(&ctx);
+        // leaving the Transform tool keeps what was done
+        if self.warp.is_some() && self.tool != Tool::Transform {
+            self.commit_warp();
+        }
         // closing with unsaved changes asks first
         if ctx.input(|i| i.viewport().close_requested()) && self.dirty && !self.allow_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);

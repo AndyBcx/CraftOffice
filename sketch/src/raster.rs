@@ -176,6 +176,8 @@ pub struct Layer {
     /// (value = brightness × alpha). While `on_mask`, this holds the layer's colours.
     pub mask: Option<Vec<u8>>,
     pub on_mask: bool,
+    /// Clipping mask: the layer shows only where the layer under it has paint.
+    pub clip: bool,
 }
 
 /// How much of a layer a mask pixel lets through (0..1).
@@ -193,7 +195,7 @@ impl Layer {
                 p.copy_from_slice(&fill);
             }
         }
-        Layer { name, visible: true, opacity: 1.0, blend: Blend::Normal, px, mask: None, on_mask: false }
+        Layer { name, visible: true, opacity: 1.0, blend: Blend::Normal, px, mask: None, on_mask: false, clip: false }
     }
 
     /// The layer's own colours (whichever buffer holds them).
@@ -305,9 +307,18 @@ impl Doc {
 
     /// The visible layers composited with their opacity and blend mode, in a region.
     pub fn composite(&self, r: IRect, under: Option<[u8; 3]>) -> Vec<u8> {
+        self.composite_with(r, under, None)
+    }
+
+    /// [`Doc::composite`], with each layer's opacity times `mult` (the flipbook's frames and
+    /// onion skin) in place of the layers' visibility.
+    pub fn composite_with(&self, r: IRect, under: Option<[u8; 3]>, mult: Option<&[f32]>) -> Vec<u8> {
         let r = r.intersect(self.full());
         let mut out = Vec::with_capacity((r.width() * r.height() * 4) as usize);
-        let layers: Vec<&Layer> = self.layers.iter().filter(|l| l.visible && l.opacity > 0.0).collect();
+        let layers: Vec<(&Layer, f32)> = match mult {
+            None => self.layers.iter().filter(|l| l.visible && l.opacity > 0.0).map(|l| (l, 1.0)).collect(),
+            Some(m) => self.layers.iter().zip(m).filter(|(l, &k)| k > 0.0 && l.opacity > 0.0).map(|(l, &k)| (l, k)).collect(),
+        };
         let base = match under {
             Some(c) => [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 1.0],
             None => [0.0; 4],
@@ -316,10 +327,18 @@ impl Doc {
             for x in r.x0..r.x1 {
                 let i = ((y * self.w + x) * 4) as usize;
                 let mut acc = base;
-                for l in &layers {
+                // the coverage of the last layer that is not clipped, for the clipped ones above it
+                let mut under = 1.0;
+                for &(l, k) in &layers {
                     let p = &l.colors()[i..i + 4];
                     let m = l.mask_px().map_or(1.0, |m| mask_value(&m[i..i + 4]));
-                    blend_into(&mut acc, p, p[3] as f32 / 255.0 * l.opacity * m, l.blend);
+                    let a = p[3] as f32 / 255.0 * l.opacity * k * m;
+                    if l.clip {
+                        blend_into(&mut acc, p, a * under, l.blend);
+                    } else {
+                        under = p[3] as f32 / 255.0 * m;
+                        blend_into(&mut acc, p, a, l.blend);
+                    }
                 }
                 out.extend(acc.iter().map(|v| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8));
             }
@@ -376,10 +395,14 @@ pub enum Tip {
     Chalk,
     /// Scattered dots.
     Spray,
+    /// Graphite on paper: the tooth of the paper shows through.
+    Graphite,
+    /// A ballpoint: ink that skips a little.
+    Ballpoint,
 }
 
 impl Tip {
-    pub const ALL: [Tip; 5] = [Tip::Round, Tip::Square, Tip::Flat, Tip::Chalk, Tip::Spray];
+    pub const ALL: [Tip; 7] = [Tip::Round, Tip::Square, Tip::Flat, Tip::Chalk, Tip::Spray, Tip::Graphite, Tip::Ballpoint];
     pub fn name(self) -> &'static str {
         match self {
             Tip::Round => "Round",
@@ -387,6 +410,8 @@ impl Tip {
             Tip::Flat => "Calligraphy",
             Tip::Chalk => "Chalk",
             Tip::Spray => "Spray",
+            Tip::Graphite => "Graphite",
+            Tip::Ballpoint => "Ballpoint",
         }
     }
 }
@@ -401,6 +426,108 @@ fn hash01(x: u32, y: u32, seed: u32) -> f32 {
     h = h.wrapping_mul(0x297A_2D39);
     h ^= h >> 15;
     (h & 0xFF_FFFF) as f32 / 0xFF_FFFF as f32
+}
+
+/// Smooth noise 0..1 (the paper's tooth for graphite), `scale` pixels per cell.
+fn value_noise(x: f32, y: f32, scale: f32, seed: u32) -> f32 {
+    let (fx, fy) = (x / scale, y / scale);
+    let (ix, iy) = (fx.floor(), fy.floor());
+    let (tx, ty) = (fx - ix, fy - iy);
+    let (sx, sy) = (tx * tx * (3.0 - 2.0 * tx), ty * ty * (3.0 - 2.0 * ty));
+    let (ix, iy) = (ix as i64 as u32, iy as i64 as u32);
+    let a = hash01(ix, iy, seed);
+    let b = hash01(ix.wrapping_add(1), iy, seed);
+    let c = hash01(ix, iy.wrapping_add(1), seed);
+    let d = hash01(ix.wrapping_add(1), iy.wrapping_add(1), seed);
+    (a + (b - a) * sx) + ((c + (d - c) * sx) - (a + (b - a) * sx)) * sy
+}
+
+/// Symmetry: each point of a stroke is also painted at its mirror images.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SymKind {
+    Off,
+    /// Mirrored left–right (about a vertical line).
+    LeftRight,
+    /// Mirrored top–bottom (about a horizontal line).
+    TopBottom,
+    /// Both: four copies.
+    Both,
+    /// Turned around the centre, this many copies.
+    Radial(u8),
+    /// Turned and mirrored (a kaleidoscope), twice this many copies.
+    Kaleido(u8),
+    /// Mirrored about a line through the centre at any angle (`Sym::angle`).
+    Free,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Sym {
+    pub kind: SymKind,
+    /// The centre (the line(s) of symmetry go through it), in canvas pixels.
+    pub cx: f32,
+    pub cy: f32,
+    /// Free symmetry: the line's angle (radians, 0 = level).
+    pub angle: f32,
+}
+
+impl Sym {
+    pub const OFF: Sym = Sym { kind: SymKind::Off, cx: 0.0, cy: 0.0, angle: 0.0 };
+
+    /// The point and its images; the point itself comes first.
+    pub fn images(&self, x: f32, y: f32) -> Vec<(f32, f32)> {
+        let (dx, dy) = (x - self.cx, y - self.cy);
+        let (cx, cy) = (self.cx, self.cy);
+        match self.kind {
+            SymKind::Off => vec![(x, y)],
+            SymKind::LeftRight => vec![(x, y), (cx - dx, y)],
+            SymKind::TopBottom => vec![(x, y), (x, cy - dy)],
+            SymKind::Both => vec![(x, y), (cx - dx, y), (x, cy - dy), (cx - dx, cy - dy)],
+            SymKind::Free => {
+                let (uy, ux) = self.angle.sin_cos();
+                let d = dx * ux + dy * uy;
+                vec![(x, y), (cx + 2.0 * d * ux - dx, cy + 2.0 * d * uy - dy)]
+            }
+            SymKind::Radial(n) | SymKind::Kaleido(n) => {
+                let n = n.clamp(2, 16) as usize;
+                let mut v = Vec::with_capacity(n * 2);
+                for k in 0..n {
+                    let a = k as f32 * std::f32::consts::TAU / n as f32;
+                    let (s, c) = a.sin_cos();
+                    v.push((cx + dx * c - dy * s, cy + dx * s + dy * c));
+                }
+                if matches!(self.kind, SymKind::Kaleido(_)) {
+                    for k in 0..n {
+                        let a = k as f32 * std::f32::consts::TAU / n as f32;
+                        let (s, c) = a.sin_cos();
+                        // mirror across the vertical line, then turn
+                        let (mx, my) = (-dx, dy);
+                        v.push((cx + mx * c - my * s, cy + mx * s + my * c));
+                    }
+                }
+                v
+            }
+        }
+    }
+
+    /// The guide: rays from the centre, as angles (radians).
+    pub fn rays(&self) -> Vec<f32> {
+        use std::f32::consts::{FRAC_PI_2, PI, TAU};
+        match self.kind {
+            SymKind::Off => vec![],
+            SymKind::LeftRight => vec![-FRAC_PI_2, FRAC_PI_2],
+            SymKind::TopBottom => vec![0.0, PI],
+            SymKind::Both => vec![0.0, FRAC_PI_2, PI, -FRAC_PI_2],
+            SymKind::Free => vec![self.angle, self.angle + PI],
+            SymKind::Radial(n) => {
+                let n = n.clamp(2, 16) as usize;
+                (0..n).map(|k| -FRAC_PI_2 + (k as f32 + 0.5) * TAU / n as f32).collect()
+            }
+            SymKind::Kaleido(n) => {
+                let n = n.clamp(2, 16) as usize;
+                (0..2 * n).map(|k| -FRAC_PI_2 + k as f32 * PI / n as f32).collect()
+            }
+        }
+    }
 }
 
 /// How one brush lays down coverage.
@@ -421,6 +548,10 @@ pub struct Brush {
     /// Distance between stamps, as a fraction of the size.
     pub spacing: f32,
     pub tip: Tip,
+    /// The stroke starts thin and swells over this much of its length (0: no taper).
+    pub taper: f32,
+    /// A fast stroke draws thinner, like a brush pen (0: no change).
+    pub speed: f32,
 }
 
 /// A stroke in progress on one layer.
@@ -435,9 +566,15 @@ pub struct Stroke {
     /// …and only as much as this selection mask (doc-sized, 0..255) allows.
     pub sel: Option<std::sync::Arc<Vec<u8>>>,
     stamps: u32,
-    last: Option<(f32, f32, f32)>,
-    /// Distance left over from the previous segment, so stamps stay evenly spaced.
-    carry: f32,
+    /// Symmetry: the stroke is also painted at the images of each point.
+    pub sym: Sym,
+    /// Per image: the last point, and the distance left over from the previous segment so
+    /// stamps stay evenly spaced.
+    last: Vec<Option<(f32, f32, f32)>>,
+    carry: Vec<f32>,
+    /// How far the stroke has come, and how fast it moves (smoothed), for taper and speed.
+    travel: f32,
+    pace: f32,
 }
 
 impl Stroke {
@@ -451,33 +588,60 @@ impl Stroke {
             clip: None,
             sel: None,
             stamps: 0,
-            last: None,
-            carry: 0.0,
+            sym: Sym::OFF,
+            last: Vec::new(),
+            carry: Vec::new(),
+            travel: 0.0,
+            pace: 0.0,
         }
     }
 
     /// Continue the stroke to (x, y) with pen pressure 0..1; returns the pixels it changed.
     pub fn to(&mut self, doc: &mut Doc, x: f32, y: f32, pressure_size: f32, pressure_alpha: f32) -> IRect {
         let mut changed = IRect::empty();
-        let size = (self.brush.size * pressure_size).max(1.0);
-        let step = (size * self.brush.spacing).max(0.5);
-        match self.last {
-            None => {
-                changed.union(self.stamp(doc.w, doc.h, x, y, size, pressure_alpha));
-            }
-            Some((lx, ly, _)) => {
-                let (dx, dy) = (x - lx, y - ly);
-                let dist = (dx * dx + dy * dy).sqrt();
-                let mut d = step - self.carry;
-                while d <= dist {
-                    let t = d / dist.max(1e-6);
-                    changed.union(self.stamp(doc.w, doc.h, lx + dx * t, ly + dy * t, size, pressure_alpha));
-                    d += step;
-                }
-                self.carry = dist - (d - step);
-            }
+        // taper and speed thin the line, from the first image's movement
+        let seg = match self.last.first().copied().flatten() {
+            Some((lx, ly, _)) => ((x - lx).powi(2) + (y - ly).powi(2)).sqrt(),
+            None => 0.0,
+        };
+        self.travel += seg;
+        self.pace = self.pace * 0.7 + seg * 0.3;
+        let mut f = pressure_size;
+        if self.brush.taper > 0.0 {
+            let len = (self.brush.size * 8.0 * self.brush.taper).max(1.0);
+            let ramp = (self.travel / len).clamp(0.0, 1.0);
+            f *= 0.2 + 0.8 * ramp.powf(0.6);
         }
-        self.last = Some((x, y, pressure_size));
+        if self.brush.speed > 0.0 {
+            let rel = self.pace / self.brush.size.max(1.0);
+            f *= (1.0 / (1.0 + self.brush.speed * rel * 0.8)).max(0.3);
+        }
+        let size = (self.brush.size * f).max(1.0);
+        let step = (size * self.brush.spacing).max(0.5);
+        let pts = self.sym.images(x, y);
+        if self.last.len() != pts.len() {
+            self.last = vec![None; pts.len()];
+            self.carry = vec![0.0; pts.len()];
+        }
+        for (k, (x, y)) in pts.into_iter().enumerate() {
+            match self.last[k] {
+                None => {
+                    changed.union(self.stamp(doc.w, doc.h, x, y, size, pressure_alpha));
+                }
+                Some((lx, ly, _)) => {
+                    let (dx, dy) = (x - lx, y - ly);
+                    let dist = (dx * dx + dy * dy).sqrt();
+                    let mut d = step - self.carry[k];
+                    while d <= dist {
+                        let t = d / dist.max(1e-6);
+                        changed.union(self.stamp(doc.w, doc.h, lx + dx * t, ly + dy * t, size, pressure_alpha));
+                        d += step;
+                    }
+                    self.carry[k] = dist - (d - step);
+                }
+            }
+            self.last[k] = Some((x, y, pressure_size));
+        }
         if !changed.is_empty() {
             self.apply(doc, changed);
             self.dirty.union(changed);
@@ -505,6 +669,8 @@ impl Stroke {
         let inner = r * hard;
         let flow = (self.brush.flow * alpha).clamp(0.0, 1.0);
         let tip = self.brush.tip;
+        // a ballpoint skips now and then
+        let flow = if tip == Tip::Ballpoint { flow * (0.82 + 0.18 * hash01(self.stamps, 5, 41)) } else { flow };
         let buildup = self.brush.buildup;
         let sel = self.sel.clone();
         let put = |mask: &mut Vec<u8>, x: i64, y: i64, c: f32| {
@@ -553,6 +719,14 @@ impl Stroke {
                     let s = 1.0 - t;
                     s * s * (3.0 - 2.0 * s)
                 };
+                if tip == Tip::Graphite && c > 0.0 {
+                    // the paper's tooth: fine grain over a softer weave; light strokes catch only the peaks
+                    let n = 0.6 * value_noise(x as f32, y as f32, 2.2, 17) + 0.4 * hash01(x as u32, y as u32, 29);
+                    c *= (n * 1.6 - 0.35).clamp(0.0, 1.0) * 0.85 + 0.1;
+                }
+                if tip == Tip::Ballpoint && c > 0.0 {
+                    c *= 0.85 + 0.15 * hash01(x as u32, y as u32, 31);
+                }
                 if tip == Tip::Chalk && c > 0.0 {
                     let g = hash01(x as u32, y as u32, 7);
                     c *= if g < 0.3 { 0.0 } else { 0.45 + 0.55 * hash01(x as u32, y as u32, 3) };
@@ -618,12 +792,149 @@ impl Stroke {
 
 /// Stamp a whole path at once (shapes): a stroke from the first point through the rest.
 pub fn stroke_path(doc: &mut Doc, layer: usize, brush: Brush, pts: &[(f32, f32)], clip: Option<IRect>) -> Option<Undo> {
+    stroke_path_sym(doc, layer, brush, pts, clip, Sym::OFF)
+}
+
+/// [`stroke_path`] with symmetry.
+pub fn stroke_path_sym(doc: &mut Doc, layer: usize, brush: Brush, pts: &[(f32, f32)], clip: Option<IRect>, sym: Sym) -> Option<Undo> {
     let mut s = Stroke::begin(doc, layer, brush);
     s.clip = clip;
+    s.sym = sym;
     for &(x, y) in pts {
         s.to(doc, x, y, 1.0, 1.0);
     }
     s.end(doc)
+}
+
+/// Predictive stroke: a freehand stroke that is nearly a straight line, a circle or ellipse, a
+/// triangle or a rectangle, as that shape (its outline as points), or `None` to keep it as drawn.
+/// `snap`: straight lines near 0°, 45° or 90° are set to it.
+pub fn predict(pts: &[(f32, f32)], snap: bool) -> Option<Vec<(f32, f32)>> {
+    if pts.len() < 4 {
+        return None;
+    }
+    let (a, b) = (pts[0], *pts.last().unwrap());
+    let path: f32 = pts.windows(2).map(|w| dist(w[0], w[1])).sum();
+    if path < 12.0 {
+        return None;
+    }
+    let chord = dist(a, b);
+    // a straight line: every point close to the chord
+    if chord > path * 0.7 {
+        let dev = pts.iter().map(|&p| seg_dist(p, a, b)).fold(0.0f32, f32::max);
+        if dev < (chord * 0.04).max(2.0) {
+            let mut b = b;
+            if snap {
+                let ang = (b.1 - a.1).atan2(b.0 - a.0);
+                let q = std::f32::consts::FRAC_PI_4;
+                let snapped = (ang / q).round() * q;
+                if (ang - snapped).abs() < 5f32.to_radians() {
+                    b = (a.0 + chord * snapped.cos(), a.1 + chord * snapped.sin());
+                }
+            }
+            return Some(vec![a, b]);
+        }
+        return None;
+    }
+    // closed shapes: the ends meet
+    let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for &(x, y) in pts {
+        x0 = x0.min(x);
+        y0 = y0.min(y);
+        x1 = x1.max(x);
+        y1 = y1.max(y);
+    }
+    let diag = dist((x0, y0), (x1, y1));
+    if diag < 10.0 || chord > diag * 0.25 {
+        return None;
+    }
+    // an ellipse: the points sit at nearly the same "radius" of the box's ellipse
+    let (cx, cy, rx, ry) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0, ((x1 - x0) / 2.0).max(1.0), ((y1 - y0) / 2.0).max(1.0));
+    let rs: Vec<f32> = pts.iter().map(|&(x, y)| (((x - cx) / rx).powi(2) + ((y - cy) / ry).powi(2)).sqrt()).collect();
+    let mean = rs.iter().sum::<f32>() / rs.len() as f32;
+    let sd = (rs.iter().map(|r| (r - mean).powi(2)).sum::<f32>() / rs.len() as f32).sqrt();
+    // and they go all the way around
+    let turned = {
+        let mut seen = [false; 12];
+        for &(x, y) in pts {
+            let a = (y - cy).atan2(x - cx) + std::f32::consts::PI;
+            seen[((a / std::f32::consts::TAU * 12.0) as usize).min(11)] = true;
+        }
+        seen.iter().all(|&v| v)
+    };
+    // a polygon: the corners of the simplified outline
+    let mut closed: Vec<(f32, f32)> = pts.to_vec();
+    closed.push(a);
+    let corners = simplify(&closed, diag * 0.07);
+    let n = corners.len().saturating_sub(1); // the last repeats the first
+    if (3..=4).contains(&n) && sd > 0.06 {
+        let mut c = corners[..n].to_vec();
+        if n == 4 {
+            // a rectangle: nearly square to the axes → exactly so
+            let axis = c.iter().zip(c.iter().cycle().skip(1)).all(|(p, q)| {
+                let ang = (q.1 - p.1).atan2(q.0 - p.0).abs() % std::f32::consts::FRAC_PI_2;
+                ang < 0.17 || ang > std::f32::consts::FRAC_PI_2 - 0.17
+            });
+            if axis {
+                c = vec![(x0, y0), (x1, y0), (x1, y1), (x0, y1)];
+            }
+        }
+        c.push(c[0]);
+        return Some(c);
+    }
+    if turned && sd < 0.09 {
+        let (rx, ry) = if (rx - ry).abs() < (rx + ry) * 0.06 { ((rx + ry) / 2.0, (rx + ry) / 2.0) } else { (rx, ry) };
+        let k = ((rx + ry) * 0.8).clamp(24.0, 720.0) as usize;
+        return Some(
+            (0..=k)
+                .map(|i| {
+                    let t = i as f32 / k as f32 * std::f32::consts::TAU;
+                    (cx + rx * t.cos(), cy + ry * t.sin())
+                })
+                .collect(),
+        );
+    }
+    None
+}
+
+fn dist(a: (f32, f32), b: (f32, f32)) -> f32 {
+    ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt()
+}
+
+/// Distance from p to the segment a–b.
+fn seg_dist(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
+    let (vx, vy) = (b.0 - a.0, b.1 - a.1);
+    let l2 = vx * vx + vy * vy;
+    if l2 <= 1e-6 {
+        return dist(p, a);
+    }
+    let t = (((p.0 - a.0) * vx + (p.1 - a.1) * vy) / l2).clamp(0.0, 1.0);
+    dist(p, (a.0 + vx * t, a.1 + vy * t))
+}
+
+/// Douglas–Peucker: the points that keep the outline within `eps`.
+fn simplify(pts: &[(f32, f32)], eps: f32) -> Vec<(f32, f32)> {
+    if pts.len() < 3 {
+        return pts.to_vec();
+    }
+    let (a, b) = (pts[0], *pts.last().unwrap());
+    // a closed outline: split at the point farthest from the start
+    let (mut far, mut fd) = (0, 0.0);
+    for (i, &p) in pts.iter().enumerate() {
+        let d = if dist(a, b) < 1e-3 { dist(p, a) } else { seg_dist(p, a, b) };
+        if d > fd {
+            far = i;
+            fd = d;
+        }
+    }
+    if fd <= eps || far == 0 || far == pts.len() - 1 {
+        return vec![a, b];
+    }
+    let mut l = simplify(&pts[..=far], eps);
+    let r = simplify(&pts[far..], eps);
+    l.pop();
+    l.extend(r);
+    l
 }
 
 /// The outline of a shape between two corners, as points along it.
@@ -867,6 +1178,245 @@ pub fn over(px: &mut [u8], w: u32, r: IRect, data: &[u8], rw: u32, sx: u32, sy: 
             }
             px[k + 3] = (oa * 255.0 + 0.5) as u8;
         }
+    }
+}
+
+/// Paint a colour into a layer as much as a coverage mask (doc-sized, 0..255) says.
+pub fn fill_mask(doc: &mut Doc, layer: usize, cover: &[u8], color: [u8; 3], opacity: f32) -> Option<Undo> {
+    let w = doc.w;
+    let mut r = IRect::empty();
+    for (i, &v) in cover.iter().enumerate() {
+        if v > 0 {
+            let (x, y) = (i as u32 % w, i as u32 / w);
+            r.union(IRect { x0: x, y0: y, x1: x + 1, y1: y + 1 });
+        }
+    }
+    if r.is_empty() {
+        return None;
+    }
+    let px = &mut doc.layers[layer].px;
+    let before = crop(px, w, r);
+    for y in r.y0..r.y1 {
+        for x in r.x0..r.x1 {
+            let i = (y * w + x) as usize;
+            let m = cover[i] as f32 / 255.0 * opacity.clamp(0.0, 1.0);
+            if m <= 0.0 {
+                continue;
+            }
+            let k = i * 4;
+            let da = px[k + 3] as f32 / 255.0;
+            let oa = m + da * (1.0 - m);
+            for c in 0..3 {
+                px[k + c] = ((color[c] as f32 * m + px[k + c] as f32 * da * (1.0 - m)) / oa) as u8;
+            }
+            px[k + 3] = (oa * 255.0 + 0.5) as u8;
+        }
+    }
+    Some(Undo::Pixels { layer, rect: r, before, after: crop(px, w, r) })
+}
+
+/// The edge of a selection mask as a band `width` pixels wide, centred on the edge (Draw Outline).
+pub fn outline_mask(sel: &[u8], w: u32, h: u32, width: f32) -> Vec<u8> {
+    let (w, h) = (w as usize, h as usize);
+    let rad = ((width / 2.0).round() as usize).max(1);
+    let inside: Vec<u8> = sel.iter().map(|&v| if v >= 128 { 255 } else { 0 }).collect();
+    // dilate and erode with a square, one axis at a time
+    let pass = |src: &[u8], grow: bool| -> Vec<u8> {
+        let pick = |a: u8, b: u8| if grow { a.max(b) } else { a.min(b) };
+        let mut tmp = src.to_vec();
+        for y in 0..h {
+            for x in 0..w {
+                let mut v = src[y * w + x];
+                for d in 1..=rad {
+                    if x >= d {
+                        v = pick(v, src[y * w + x - d]);
+                    } else if !grow {
+                        v = 0;
+                    }
+                    if x + d < w {
+                        v = pick(v, src[y * w + x + d]);
+                    } else if !grow {
+                        v = 0;
+                    }
+                }
+                tmp[y * w + x] = v;
+            }
+        }
+        let mut out = tmp.clone();
+        for y in 0..h {
+            for x in 0..w {
+                let mut v = tmp[y * w + x];
+                for d in 1..=rad {
+                    if y >= d {
+                        v = pick(v, tmp[(y - d) * w + x]);
+                    } else if !grow {
+                        v = 0;
+                    }
+                    if y + d < h {
+                        v = pick(v, tmp[(y + d) * w + x]);
+                    } else if !grow {
+                        v = 0;
+                    }
+                }
+                out[y * w + x] = v;
+            }
+        }
+        out
+    };
+    let grown = pass(&inside, true);
+    let shrunk = pass(&inside, false);
+    grown.iter().zip(&shrunk).map(|(&g, &s)| g.saturating_sub(s)).collect()
+}
+
+/// The homography taking the unit square's corners (0,0) (1,0) (1,1) (0,1) to `q`.
+fn square_to_quad(q: [(f32, f32); 4]) -> [f64; 9] {
+    let [(x0, y0), (x1, y1), (x2, y2), (x3, y3)] = q.map(|(a, b)| (a as f64, b as f64));
+    let (dx1, dx2, dx3) = (x1 - x2, x3 - x2, x0 - x1 + x2 - x3);
+    let (dy1, dy2, dy3) = (y1 - y2, y3 - y2, y0 - y1 + y2 - y3);
+    if dx3.abs() < 1e-9 && dy3.abs() < 1e-9 {
+        return [x1 - x0, x3 - x0, x0, y1 - y0, y3 - y0, y0, 0.0, 0.0, 1.0];
+    }
+    let den = dx1 * dy2 - dx2 * dy1;
+    let g = (dx3 * dy2 - dx2 * dy3) / den;
+    let hh = (dx1 * dy3 - dx3 * dy1) / den;
+    [x1 - x0 + g * x1, x3 - x0 + hh * x3, x0, y1 - y0 + g * y1, y3 - y0 + hh * y3, y0, g, hh, 1.0]
+}
+
+fn invert3(m: [f64; 9]) -> Option<[f64; 9]> {
+    let [a, b, c, d, e, f, g, h, i] = m;
+    let det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    if det.abs() < 1e-12 {
+        return None;
+    }
+    let k = 1.0 / det;
+    Some([
+        (e * i - f * h) * k,
+        (c * h - b * i) * k,
+        (b * f - c * e) * k,
+        (f * g - d * i) * k,
+        (a * i - c * g) * k,
+        (c * d - a * f) * k,
+        (d * h - e * g) * k,
+        (b * g - a * h) * k,
+        (a * e - b * d) * k,
+    ])
+}
+
+/// Whether a point is inside a polygon (even–odd).
+pub fn point_in_polygon(poly: &[(f32, f32)], p: (f32, f32)) -> bool {
+    let mut inside = false;
+    let n = poly.len();
+    for i in 0..n {
+        let (a, b) = (poly[i], poly[(i + n - 1) % n]);
+        if (a.1 > p.1) != (b.1 > p.1) && p.0 < (b.0 - a.0) * (p.1 - a.1) / (b.1 - a.1) + a.0 {
+            inside = !inside;
+        }
+    }
+    inside
+}
+
+/// Transform: a part of a layer (the selection, or all of it) moved, scaled, turned or distorted
+/// to any four corners.
+pub struct Warp {
+    pub layer: usize,
+    before: Vec<u8>,
+    base: Vec<u8>,
+    pub src: IRect,
+    data: Vec<u8>,
+    /// Where the corners of `src` are now (top-left, top-right, bottom-right, bottom-left).
+    pub quad: [(f32, f32); 4],
+    shown: IRect,
+    touched: IRect,
+}
+
+impl Warp {
+    pub fn begin(doc: &mut Doc, layer: usize, src: IRect, sel: Option<&[u8]>) -> Self {
+        let m = Moving::begin(doc, layer, src, sel);
+        let (x0, y0, x1, y1) = (m.src.x0 as f32, m.src.y0 as f32, m.src.x1 as f32, m.src.y1 as f32);
+        Warp { layer, before: m.before, base: m.base, src: m.src, data: m.data, quad: [(x0, y0), (x1, y0), (x1, y1), (x0, y1)], shown: m.src, touched: m.src }
+    }
+
+    /// Draw the part at `quad`; returns the region that changed.
+    pub fn place(&mut self, doc: &mut Doc, quad: [(f32, f32); 4]) -> IRect {
+        self.quad = quad;
+        let (w, h) = (doc.w, doc.h);
+        let px = &mut doc.layers[self.layer].px;
+        let old = self.shown;
+        paste(px, w, old, &crop(&self.base, w, old));
+        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for (x, y) in quad {
+            x0 = x0.min(x);
+            y0 = y0.min(y);
+            x1 = x1.max(x);
+            y1 = y1.max(y);
+        }
+        let r = IRect {
+            x0: x0.floor().clamp(0.0, w as f32) as u32,
+            y0: y0.floor().clamp(0.0, h as f32) as u32,
+            x1: x1.ceil().clamp(0.0, w as f32) as u32,
+            y1: y1.ceil().clamp(0.0, h as f32) as u32,
+        };
+        let (sw, sh) = (self.src.width(), self.src.height());
+        if let (false, Some(inv)) = (r.is_empty() || sw == 0 || sh == 0, invert3(square_to_quad(quad))) {
+            let mut layer = vec![0u8; (r.width() * r.height() * 4) as usize];
+            let fetch = |x: i64, y: i64| -> [f32; 4] {
+                if x < 0 || y < 0 || x >= sw as i64 || y >= sh as i64 {
+                    return [0.0; 4];
+                }
+                let k = ((y as u32 * sw + x as u32) * 4) as usize;
+                let a = self.data[k + 3] as f32;
+                [self.data[k] as f32 * a, self.data[k + 1] as f32 * a, self.data[k + 2] as f32 * a, a]
+            };
+            for y in r.y0..r.y1 {
+                for x in r.x0..r.x1 {
+                    let (fx, fy) = (x as f64 + 0.5, y as f64 + 0.5);
+                    let d = inv[6] * fx + inv[7] * fy + inv[8];
+                    let u = (inv[0] * fx + inv[1] * fy + inv[2]) / d;
+                    let v = (inv[3] * fx + inv[4] * fy + inv[5]) / d;
+                    if !(-0.01..=1.01).contains(&u) || !(-0.01..=1.01).contains(&v) {
+                        continue;
+                    }
+                    // bilinear, premultiplied
+                    let (sx, sy) = (u as f32 * sw as f32 - 0.5, v as f32 * sh as f32 - 0.5);
+                    let (ix, iy) = (sx.floor(), sy.floor());
+                    let (tx, ty) = (sx - ix, sy - iy);
+                    let (ix, iy) = (ix as i64, iy as i64);
+                    let (a, b, c, e) = (fetch(ix, iy), fetch(ix + 1, iy), fetch(ix, iy + 1), fetch(ix + 1, iy + 1));
+                    let mut o = [0f32; 4];
+                    for n in 0..4 {
+                        o[n] = (a[n] * (1.0 - tx) + b[n] * tx) * (1.0 - ty) + (c[n] * (1.0 - tx) + e[n] * tx) * ty;
+                    }
+                    if o[3] <= 0.0 {
+                        continue;
+                    }
+                    let k = (((y - r.y0) * r.width() + (x - r.x0)) * 4) as usize;
+                    layer[k] = (o[0] / o[3]).clamp(0.0, 255.0) as u8;
+                    layer[k + 1] = (o[1] / o[3]).clamp(0.0, 255.0) as u8;
+                    layer[k + 2] = (o[2] / o[3]).clamp(0.0, 255.0) as u8;
+                    layer[k + 3] = o[3].clamp(0.0, 255.0) as u8;
+                }
+            }
+            over(px, w, r, &layer, r.width(), 0, 0);
+        }
+        self.shown = r;
+        self.touched.union(r);
+        let mut changed = old;
+        changed.union(r);
+        changed
+    }
+
+    pub fn end(self, doc: &Doc) -> Option<Undo> {
+        let r = self.touched;
+        if r.is_empty() {
+            return None;
+        }
+        let before = crop(&self.before, doc.w, r);
+        let after = crop(&doc.layers[self.layer].px, doc.w, r);
+        (before != after).then_some(Undo::Pixels { layer: self.layer, rect: r, before, after })
+    }
+
+    pub fn cancel(self, doc: &mut Doc) {
+        doc.layers[self.layer].px = self.before;
     }
 }
 
@@ -1547,8 +2097,85 @@ fn apply(doc: &mut Doc, u: &Undo, forward: bool) -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn symmetry_images() {
+        let s = Sym { kind: SymKind::LeftRight, cx: 50.0, cy: 50.0, angle: 0.0 };
+        assert_eq!(s.images(40.0, 10.0), vec![(40.0, 10.0), (60.0, 10.0)]);
+        let r = Sym { kind: SymKind::Radial(4), cx: 0.0, cy: 0.0, angle: 0.0 }.images(10.0, 0.0);
+        assert_eq!(r.len(), 4);
+        assert!((r[1].0).abs() < 1e-4 && (r[1].1 - 10.0).abs() < 1e-4);
+        assert_eq!(Sym { kind: SymKind::Kaleido(3), cx: 0.0, cy: 0.0, angle: 0.0 }.images(1.0, 2.0).len(), 6);
+    }
+
+    #[test]
+    fn a_symmetric_stroke_paints_the_mirror_too() {
+        let mut d = Doc::new(40, 40, None, "bg", "l");
+        let mut st = Stroke::begin(&d, 0, brush());
+        st.sym = Sym { kind: SymKind::LeftRight, cx: 20.0, cy: 20.0, angle: 0.0 };
+        st.to(&mut d, 5.0, 20.0, 1.0, 1.0);
+        assert!(d.layers[0].px[((20 * 40 + 34) * 4 + 3) as usize] > 0);
+    }
+
+    #[test]
+    fn predictive_stroke() {
+        // a shaky straight line
+        let line: Vec<(f32, f32)> = (0..50).map(|i| (i as f32 * 2.0, 10.0 + if i % 2 == 0 { 0.8 } else { -0.8 })).collect();
+        let p = predict(&line, true).unwrap();
+        assert_eq!(p.len(), 2);
+        assert!((p[1].1 - p[0].1).abs() < 1e-3, "snapped level");
+        // a wobbly circle
+        let circ: Vec<(f32, f32)> = (0..=60).map(|i| {
+            let t = i as f32 / 60.0 * std::f32::consts::TAU;
+            let r = 40.0 + (t * 7.0).sin() * 1.2;
+            (100.0 + r * t.cos(), 100.0 + r * t.sin())
+        }).collect();
+        assert!(predict(&circ, true).unwrap().len() > 20);
+        // a rough rectangle
+        let mut rect = vec![];
+        for i in 0..20 { rect.push((10.0 + i as f32 * 5.0, 10.0 + (i % 3) as f32 * 0.6)); }
+        for i in 0..12 { rect.push((110.0, 10.0 + i as f32 * 5.0)); }
+        for i in 0..20 { rect.push((110.0 - i as f32 * 5.0, 70.0)); }
+        for i in 0..12 { rect.push((10.0, 70.0 - i as f32 * 5.0)); }
+        let r = predict(&rect, true).unwrap();
+        assert_eq!(r.len(), 5, "{r:?}");
+        // a scribble stays a scribble
+        let scrib: Vec<(f32, f32)> = (0..80).map(|i| ((i as f32 * 1.7).sin() * 30.0 + i as f32, (i as f32 * 0.9).cos() * 25.0)).collect();
+        assert!(predict(&scrib, true).is_none());
+    }
+
+    #[test]
+    fn warp_identity_and_scale() {
+        let mut d = Doc::new(20, 20, None, "bg", "l");
+        for y in 5..10 {
+            for x in 5..10 {
+                let k = ((y * 20 + x) * 4) as usize;
+                d.layers[0].px[k..k + 4].copy_from_slice(&[255, 0, 0, 255]);
+            }
+        }
+        let mut wp = Warp::begin(&mut d, 0, IRect { x0: 5, y0: 5, x1: 10, y1: 10 }, None);
+        wp.place(&mut d, [(5.0, 5.0), (15.0, 5.0), (15.0, 15.0), (5.0, 15.0)]);
+        assert_eq!(d.layers[0].px[((12 * 20 + 12) * 4 + 3) as usize], 255);
+        assert!(wp.end(&d).is_some());
+    }
+
+    #[test]
+    fn outline_and_clip() {
+        let sel = rect_mask(IRect { x0: 5, y0: 5, x1: 15, y1: 15 }, 20, 20);
+        let o = outline_mask(&sel, 20, 20, 2.0);
+        assert_eq!(o[5 * 20 + 5], 255);
+        assert_eq!(o[10 * 20 + 10], 0);
+        let mut d = Doc::new(4, 1, None, "bg", "l");
+        d.layers[0].px[..4].copy_from_slice(&[0, 0, 255, 255]);
+        let mut top = Layer::new("c".into(), 4, 1, [255, 0, 0, 255]);
+        top.clip = true;
+        d.layers.push(top);
+        let c = d.composite(d.full(), None);
+        assert_eq!(&c[..4], &[255, 0, 0, 255]);
+        assert_eq!(c[7], 0, "clipped away where nothing is under it");
+    }
+
     fn brush() -> Brush {
-        Brush { size: 9.0, hardness: 1.0, opacity: 1.0, flow: 1.0, buildup: false, mode: Mode::Paint, color: [255, 0, 0], spacing: 0.15, tip: Tip::Round }
+        Brush { size: 9.0, hardness: 1.0, opacity: 1.0, flow: 1.0, buildup: false, mode: Mode::Paint, color: [255, 0, 0], spacing: 0.15, tip: Tip::Round, taper: 0.0, speed: 0.0 }
     }
 
     #[test]
