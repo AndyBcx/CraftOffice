@@ -329,6 +329,13 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("Each layer is a frame; File › Export Animated GIF saves the animation.", "Minden réteg egy képkocka; a Fájl › Animált GIF exportálása elmenti az animációt.", "Fiecare strat este un cadru; Fișier › Exportare GIF animat salvează animația."),
     ("Export Animated GIF…", "Animált GIF exportálása…", "Exportare GIF animat…"),
     ("The flipbook's frames (the layers) as an animation.", "A lapozó képkockái (a rétegek) animációként.", "Cadrele flipbook-ului (straturile) ca animație."),
+    ("Import Pictures as Frames…", "Képek importálása képkockaként…", "Importare imagini ca cadre…"),
+    ("A picture sequence becomes the flipbook's frames.", "Egy képsorozatból a lapozó képkockái lesznek.", "O secvență de imagini devine cadrele flipbook-ului."),
+    ("Record Time-lapse", "Time-lapse felvétel", "Înregistrare time-lapse"),
+    ("Every stroke is recorded; export the drawing's making as an animation.", "Minden vonást rögzít; a rajz elkészülését animációként exportálhatod.", "Fiecare trasare este înregistrată; exportați realizarea desenului ca animație."),
+    ("Export Time-lapse (GIF)…", "Time-lapse exportálása (GIF)…", "Exportare time-lapse (GIF)…"),
+    ("Curve ruler", "Görbevonalzó", "Riglă curbă"),
+    ("A French curve: strokes begun near it follow the curve.", "Francia görbe: a közelében kezdett vonás a görbét követi.", "Florar: trasările începute lângă el urmează curba."),
 ];
 
 #[cfg(test)]

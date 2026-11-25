@@ -95,6 +95,68 @@ impl Tool {
     }
 }
 
+/// The longer side of a time-lapse frame.
+const TL_MAX: u32 = 640;
+
+/// A sort key for file names with numbers in them: frame2 before frame10.
+fn natural_key(s: &str) -> Vec<(u8, u64, String)> {
+    let mut out = Vec::new();
+    let mut num = String::new();
+    let mut txt = String::new();
+    for ch in s.chars() {
+        if ch.is_ascii_digit() {
+            if !txt.is_empty() {
+                out.push((0, 0, std::mem::take(&mut txt).to_lowercase()));
+            }
+            num.push(ch);
+        } else {
+            if !num.is_empty() {
+                out.push((1, num.parse().unwrap_or(u64::MAX), std::mem::take(&mut num)));
+            }
+            txt.push(ch);
+        }
+    }
+    if !txt.is_empty() {
+        out.push((0, 0, txt.to_lowercase()));
+    }
+    if !num.is_empty() {
+        out.push((1, num.parse().unwrap_or(u64::MAX), num));
+    }
+    out
+}
+
+/// A point of a cubic Bézier curve.
+fn bezier(c: &[(f32, f32); 4], t: f32) -> (f32, f32) {
+    let u = 1.0 - t;
+    let (a, b, cc, d) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+    (a * c[0].0 + b * c[1].0 + cc * c[2].0 + d * c[3].0, a * c[0].1 + b * c[1].1 + cc * c[2].1 + d * c[3].1)
+}
+
+/// The point of the curve nearest to q.
+fn on_curve(c: &[(f32, f32); 4], q: (f32, f32)) -> (f32, f32) {
+    let mut best = (f32::MAX, 0.0);
+    for i in 0..=256 {
+        let t = i as f32 / 256.0;
+        let p = bezier(c, t);
+        let d = (p.0 - q.0).powi(2) + (p.1 - q.1).powi(2);
+        if d < best.0 {
+            best = (d, t);
+        }
+    }
+    // refine around the best sample
+    let (mut lo, mut hi) = ((best.1 - 1.0 / 256.0).max(0.0), (best.1 + 1.0 / 256.0).min(1.0));
+    for _ in 0..12 {
+        let (a, b) = (lo + (hi - lo) / 3.0, hi - (hi - lo) / 3.0);
+        let (pa, pb) = (bezier(c, a), bezier(c, b));
+        if (pa.0 - q.0).powi(2) + (pa.1 - q.1).powi(2) < (pb.0 - q.0).powi(2) + (pb.1 - q.1).powi(2) {
+            hi = b;
+        } else {
+            lo = a;
+        }
+    }
+    bezier(c, (lo + hi) / 2.0)
+}
+
 /// A ready-made pencil or pen: the tip and how it lays down graphite or ink.
 #[derive(Clone, Copy)]
 struct Nib {
@@ -158,6 +220,8 @@ pub enum Io {
     SaveTo { path: String, kind: SaveKind },
     /// A font file for the Text tool.
     Font { name: String, bytes: Vec<u8> },
+    /// Pictures to add as flipbook frames, in name order.
+    Frames(Vec<(String, Vec<u8>)>),
     Failed(String),
 }
 
@@ -168,6 +232,7 @@ pub enum SaveKind {
     Jpeg,
     Psd,
     Gif,
+    Timelapse,
 }
 
 impl SaveKind {
@@ -177,7 +242,7 @@ impl SaveKind {
             SaveKind::Png => "png",
             SaveKind::Jpeg => "jpg",
             SaveKind::Psd => "psd",
-            SaveKind::Gif => "gif",
+            SaveKind::Gif | SaveKind::Timelapse => "gif",
         }
     }
 }
@@ -320,6 +385,13 @@ pub struct SketchApp {
     last_tick: f64,
     /// The frame and settings the picture was last built for.
     flip_shown: Option<(usize, bool, bool, bool)>,
+    /// Time-lapse recording: small PNG pictures of the drawing after each change.
+    tl_on: bool,
+    tl_frames: Vec<Vec<u8>>,
+    tl_size: (u32, u32),
+    /// The curve ruler (a French curve): the four points of a Bézier curve.
+    curve_g: Option<[(f32, f32); 4]>,
+    curve_lock: bool,
 }
 
 /// A filter being tried out on the active layer.
@@ -452,6 +524,11 @@ impl SketchApp {
             fps: 8,
             last_tick: 0.0,
             flip_shown: None,
+            tl_on: false,
+            tl_frames: Vec::new(),
+            tl_size: (0, 0),
+            curve_g: None,
+            curve_lock: false,
         };
         if let Some((name, path, bytes)) = open {
             app.open_bytes(name, path, bytes, false);
@@ -541,6 +618,7 @@ impl SketchApp {
         self.hist.push(Undo::Doc { before, after: Box::new(self.doc.clone()) });
         self.dirty = true;
         self.rebuild = true;
+        self.tl_capture();
     }
 
     /// Paint a layer's mask (`true`) or its colours (`false`); one undo step.
@@ -564,6 +642,7 @@ impl SketchApp {
             }
             self.hist.push(u);
             self.dirty = true;
+            self.tl_capture();
         }
     }
 
@@ -1079,6 +1158,13 @@ impl SketchApp {
                 }
             }
         }
+        if let Some(c) = self.curve_g {
+            for (i, v) in c.into_iter().enumerate() {
+                if near(v) {
+                    return Some(9 + i);
+                }
+            }
+        }
         None
     }
 
@@ -1131,6 +1217,11 @@ impl SketchApp {
             7 | 8 => {
                 if let Some(e) = self.ellipse_g.as_mut() {
                     e[h - 6] = c;
+                }
+            }
+            9..=12 => {
+                if let Some(cv) = self.curve_g.as_mut() {
+                    cv[h - 9] = c;
                 }
             }
             _ => {}
@@ -1201,6 +1292,22 @@ impl SketchApp {
                 painter.circle(self.to_screen(rect, p), 6.0, green, UiStroke::new(1.5, Color32::WHITE));
             }
         }
+        if let Some(cv) = self.curve_g {
+            let pts: Vec<Pos2> = (0..=96).map(|i| self.to_screen(rect, bezier(&cv, i as f32 / 96.0))).collect();
+            painter.add(egui::Shape::line(pts.clone(), UiStroke::new(6.0, Color32::from_rgba_unmultiplied(40, 200, 120, 60))));
+            painter.add(egui::Shape::line(pts, UiStroke::new(1.0, green)));
+            let s: Vec<Pos2> = cv.iter().map(|&p| self.to_screen(rect, p)).collect();
+            let thin = UiStroke::new(1.0, Color32::from_rgba_unmultiplied(40, 200, 120, 120));
+            painter.line_segment([s[0], s[1]], thin);
+            painter.line_segment([s[3], s[2]], thin);
+            for (i, p) in s.into_iter().enumerate() {
+                if i == 0 || i == 3 {
+                    painter.circle(p, 6.0, green, UiStroke::new(1.5, Color32::WHITE));
+                } else {
+                    painter.circle(p, 5.0, Color32::WHITE, UiStroke::new(1.5, green));
+                }
+            }
+        }
     }
 
     fn remember_colour(&mut self) {
@@ -1243,6 +1350,79 @@ impl SketchApp {
                     let _ = tx.send(Io::Opened { name: f.file_name(), path: None, bytes, as_layer });
                 }
             });
+        }
+    }
+
+    /// Pick pictures to add as flipbook frames.
+    fn pick_frames(&self) {
+        let tx = self.io_tx.clone();
+        let exts = ["png", "jpg", "jpeg", "bmp", "gif", "webp"];
+        #[cfg(not(target_arch = "wasm32"))]
+        std::thread::spawn(move || {
+            if let Some(mut ps) = rfd::FileDialog::new().add_filter("Images", &exts).pick_files() {
+                ps.sort_by_key(|p| natural_key(&p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
+                let list = ps.iter().filter_map(|p| Some((p.file_stem()?.to_string_lossy().into_owned(), std::fs::read(p).ok()?))).collect();
+                let _ = tx.send(Io::Frames(list));
+            }
+        });
+        #[cfg(target_arch = "wasm32")]
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Some(fs) = rfd::AsyncFileDialog::new().add_filter("Images", &exts).pick_files().await {
+                let mut list = Vec::new();
+                for f in fs {
+                    let name = f.file_name();
+                    list.push((name.rsplit_once('.').map_or(name.clone(), |(s, _)| s.to_string()), f.read().await));
+                }
+                list.sort_by_key(|(n, _)| natural_key(n));
+                let _ = tx.send(Io::Frames(list));
+            }
+        });
+    }
+
+    /// Pictures become flipbook frames above the active layer (one undo step).
+    fn add_frames(&mut self, list: Vec<(String, Vec<u8>)>) {
+        let mut layers = Vec::new();
+        for (name, bytes) in list {
+            match files::decode_image(&bytes) {
+                Ok((w, h, px)) => layers.push(files::picture_layer(&self.doc, name, w, h, &px)),
+                Err(e) => self.toast = Some((format!("{} {name}: {e}", t("Could not open the file")), f64::MAX)),
+            }
+        }
+        if layers.is_empty() {
+            return;
+        }
+        self.doc_op(|d| {
+            let at = d.active + 1;
+            for (i, l) in layers.into_iter().enumerate() {
+                d.layers.insert(at + i, l);
+            }
+            d.active = at;
+        });
+        self.flip = true;
+        self.rebuild = true;
+    }
+
+    /// Time-lapse: keep a small picture of the drawing as it is now.
+    fn tl_capture(&mut self) {
+        if !self.tl_on {
+            return;
+        }
+        let flat = self.doc.flatten(Some([255, 255, 255]));
+        if let Ok((w, h, png)) = files::thumb_png(self.doc.w, self.doc.h, &flat, TL_MAX) {
+            if (w, h) != self.tl_size {
+                // the canvas changed size: the recording starts over
+                self.tl_frames.clear();
+                self.tl_size = (w, h);
+            }
+            self.tl_frames.push(png);
+            if self.tl_frames.len() > 900 {
+                // long sessions: every other frame goes, the film stays the same length
+                let mut k = 0;
+                self.tl_frames.retain(|_| {
+                    k += 1;
+                    k % 2 == 1
+                });
+            }
         }
     }
 
@@ -1289,7 +1469,7 @@ impl SketchApp {
                     SaveKind::Png => ("PNG", "png"),
                     SaveKind::Jpeg => ("JPEG", "jpg"),
                     SaveKind::Psd => ("Photoshop", "psd"),
-                    SaveKind::Gif => ("GIF", "gif"),
+                    SaveKind::Gif | SaveKind::Timelapse => ("GIF", "gif"),
                 };
                 if let Some(mut p) = rfd::FileDialog::new().set_file_name(&name).add_filter(filter.0, &[filter.1]).save_file() {
                     if p.extension().is_none() {
@@ -1326,6 +1506,15 @@ impl SketchApp {
                 let frames: Vec<Vec<f32>> = self.frames().into_iter().map(|f| self.frame_mult(f, false)).collect();
                 files::export_gif(&self.doc, &frames, self.fps)
             }
+            SaveKind::Timelapse => {
+                let mut frames = self.tl_frames.clone();
+                // the finished picture last
+                let flat = self.doc.flatten(Some([255, 255, 255]));
+                if let Ok((_, _, last)) = files::thumb_png(self.doc.w, self.doc.h, &flat, TL_MAX) {
+                    frames.push(last);
+                }
+                files::export_timelapse(self.tl_size.0, self.tl_size.1, &frames, 15)
+            }
         }
     }
 
@@ -1360,6 +1549,7 @@ impl SketchApp {
                     #[cfg(target_arch = "wasm32")]
                     let _ = (path, kind);
                 }
+                Io::Frames(list) => self.add_frames(list),
                 Io::Font { name, bytes } => match text::load(bytes) {
                     Ok(f) => {
                         let stem = name.rsplit_once('.').map_or(name.clone(), |(s, _)| s.to_string());
@@ -1526,6 +1716,10 @@ impl SketchApp {
                     self.pick_open(true);
                     ui.close();
                 }
+                if ui.button(t("Import Pictures as Frames…")).on_hover_text(t("A picture sequence becomes the flipbook's frames.")).clicked() {
+                    self.pick_frames();
+                    ui.close();
+                }
                 ui.separator();
                 if ui.button(t("Save")).clicked() {
                     self.save(&ctx, SaveKind::Project, false);
@@ -1547,6 +1741,16 @@ impl SketchApp {
                 }
                 if ui.button(t("Export JPEG…")).clicked() {
                     self.save(&ctx, SaveKind::Jpeg, true);
+                    ui.close();
+                }
+                ui.separator();
+                if ui.checkbox(&mut self.tl_on, t("Record Time-lapse")).on_hover_text(t("Every stroke is recorded; export the drawing's making as an animation.")).changed() && self.tl_on {
+                    self.tl_frames.clear();
+                    self.tl_size = (0, 0);
+                    self.tl_capture();
+                }
+                if ui.add_enabled(!self.tl_frames.is_empty(), egui::Button::new(format!("{} ({})", t("Export Time-lapse (GIF)…"), self.tl_frames.len()))).clicked() {
+                    self.save(&ctx, SaveKind::Timelapse, true);
                     ui.close();
                 }
                 if ui.add_enabled(self.frames().len() > 1, egui::Button::new(t("Export Animated GIF…"))).on_hover_text(t("The flipbook's frames (the layers) as an animation.")).clicked() {
@@ -2247,7 +2451,11 @@ impl SketchApp {
         if ui.checkbox(&mut on, t("Ellipse guide")).on_hover_text(t("Strokes begun near the ellipse follow it.")).changed() {
             self.ellipse_g = on.then_some([(w * 0.5, h * 0.5), (w * 0.75, h * 0.5), (w * 0.5, h * 0.35)]);
         }
-        if k != SymKind::Off || self.persp > 0 || self.ruler.is_some() || self.ellipse_g.is_some() {
+        let mut on = self.curve_g.is_some();
+        if ui.checkbox(&mut on, t("Curve ruler")).on_hover_text(t("A French curve: strokes begun near it follow the curve.")).changed() {
+            self.curve_g = on.then_some([(w * 0.2, h * 0.65), (w * 0.35, h * 0.25), (w * 0.65, h * 0.25), (w * 0.8, h * 0.65)]);
+        }
+        if k != SymKind::Off || self.persp > 0 || self.ruler.is_some() || self.ellipse_g.is_some() || self.curve_g.is_some() {
             ui.label(egui::RichText::new(t("Drag the round handles to move the guides.")).small().weak());
         }
     }
@@ -2616,7 +2824,16 @@ impl SketchApp {
                                 self.persp_lock = Some((foot, d));
                             }
                         }
+                        self.curve_lock = false;
                         if self.persp_lock.is_none() {
+                            if let Some(cv) = self.curve_g {
+                                let on = on_curve(&cv, sc);
+                                if (sc.0 - on.0).hypot(sc.1 - on.1) < near {
+                                    self.curve_lock = true;
+                                }
+                            }
+                        }
+                        if self.persp_lock.is_none() && !self.curve_lock {
                             if let Some(e) = self.ellipse_g {
                                 let on = Self::on_ellipse(e, sc);
                                 if (sc.0 - on.0).hypot(sc.1 - on.1) < near {
@@ -2638,20 +2855,22 @@ impl SketchApp {
                     let pa = if self.pressure_alpha { self.pressure } else { 1.0 };
                     let done = resp.drag_stopped() || resp.clicked() || !ctx.input(|i| i.pointer.any_down());
                     // perspective: once the stroke's heading is clear it keeps to that perspective line
-                    let snap = self.persp > 0 && self.persp_snap && !self.ell_lock;
+                    let snap = self.persp > 0 && self.persp_snap && !self.ell_lock && !self.curve_lock;
                     let o = self.stroke_start.unwrap_or(c);
                     if snap && self.persp_lock.is_none() && (self.to_screen(rect, c).distance(self.to_screen(rect, o)) > 8.0 || done) {
                         let d = self.persp_dir(o, (c.0 - o.0, c.1 - o.1));
                         self.persp_lock = Some((o, d));
                     }
                     let ell = self.ellipse_g.filter(|_| self.ell_lock);
-                    let place = |lock: Option<((f32, f32), (f32, f32))>, q: (f32, f32)| match (lock, ell) {
-                        (Some((o, d)), _) => {
+                    let curve = self.curve_g.filter(|_| self.curve_lock);
+                    let place = |lock: Option<((f32, f32), (f32, f32))>, q: (f32, f32)| match (lock, ell, curve) {
+                        (Some((o, d)), _, _) => {
                             let t = (q.0 - o.0) * d.0 + (q.1 - o.1) * d.1;
                             (o.0 + d.0 * t, o.1 + d.1 * t)
                         }
-                        (None, Some(e)) => Self::on_ellipse(e, q),
-                        (None, None) => q,
+                        (None, _, Some(cv)) => on_curve(&cv, q),
+                        (None, Some(e), None) => Self::on_ellipse(e, q),
+                        (None, None, None) => q,
                     };
                     if !snap || self.persp_lock.is_some() {
                         let c = place(self.persp_lock, c);
@@ -2669,7 +2888,7 @@ impl SketchApp {
                         if !changed.is_empty() {
                             self.mark(changed);
                         }
-                        let shape = if self.predictive && self.persp_lock.is_none() && !self.ell_lock { raster::predict(&self.stroke_pts, self.predictive_snap) } else { None };
+                        let shape = if self.predictive && self.persp_lock.is_none() && !self.ell_lock && !self.curve_lock { raster::predict(&self.stroke_pts, self.predictive_snap) } else { None };
                         if let Some(shape) = shape {
                             // predictive stroke: the clean shape in place of the hand-drawn one
                             let (layer, dirty, brush, sym, clip) = (s.layer, s.dirty, s.brush, s.sym, s.clip);
@@ -2685,6 +2904,7 @@ impl SketchApp {
                         self.smooth = None;
                         self.persp_lock = None;
                         self.ell_lock = false;
+                        self.curve_lock = false;
                         self.stroke_start = None;
                         self.stroke_pts.clear();
                     } else {
@@ -3211,7 +3431,7 @@ fn mime(kind: SaveKind) -> &'static str {
         SaveKind::Png => "image/png",
         SaveKind::Jpeg => "image/jpeg",
         SaveKind::Psd => "image/vnd.adobe.photoshop",
-        SaveKind::Gif => "image/gif",
+        SaveKind::Gif | SaveKind::Timelapse => "image/gif",
     }
 }
 

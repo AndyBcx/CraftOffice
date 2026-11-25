@@ -164,6 +164,36 @@ pub fn export_gif(doc: &Doc, frames: &[Vec<f32>], fps: u32) -> Result<Vec<u8>, S
     Ok(out)
 }
 
+/// A recorded time-lapse as an animated GIF: frames of `w`×`h` RGBA (stored as PNG), the last
+/// one held for two seconds.
+pub fn export_timelapse(w: u32, h: u32, frames: &[Vec<u8>], fps: u32) -> Result<Vec<u8>, String> {
+    use image::codecs::gif::{GifEncoder, Repeat};
+    let mut out = Vec::new();
+    {
+        let mut enc = GifEncoder::new_with_speed(&mut out, 10);
+        enc.set_repeat(Repeat::Infinite).map_err(|e| e.to_string())?;
+        let n = frames.len();
+        for (i, f) in frames.iter().enumerate() {
+            let img = image::load_from_memory(f).map_err(|e| e.to_string())?.to_rgba8();
+            if img.width() != w || img.height() != h {
+                continue;
+            }
+            let ms = if i + 1 == n { 2000 } else { 1000 / fps.clamp(1, 60) };
+            enc.encode_frame(image::Frame::from_parts(img, 0, 0, image::Delay::from_numer_denom_ms(ms, 1))).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(out)
+}
+
+/// A small copy of a picture (the longer side at most `max`), as PNG: a time-lapse frame.
+pub fn thumb_png(w: u32, h: u32, rgba: &[u8], max: u32) -> Result<(u32, u32, Vec<u8>), String> {
+    let img = image::RgbaImage::from_raw(w, h, rgba.to_vec()).ok_or("frame")?;
+    let k = (max as f32 / w.max(h) as f32).min(1.0);
+    let (tw, th) = (((w as f32 * k).round() as u32).max(1), ((h as f32 * k).round() as u32).max(1));
+    let small = image::imageops::resize(&img, tw, th, image::imageops::FilterType::Triangle);
+    Ok((tw, th, png(tw, th, small.as_raw())?))
+}
+
 /// JPEG has no transparency: the picture goes over white.
 pub fn export_jpeg(doc: &Doc) -> Result<Vec<u8>, String> {
     let flat = doc.flatten(Some([255, 255, 255]));
