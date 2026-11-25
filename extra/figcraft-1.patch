@@ -1,0 +1,68 @@
+diff --git a/crates/ui-egui/locales/hu.toml b/crates/ui-egui/locales/hu.toml
+index fed4df2b..eaf50526 100644
+--- a/crates/ui-egui/locales/hu.toml
++++ b/crates/ui-egui/locales/hu.toml
+@@ -2026,6 +2026,29 @@ status = "draft — needs native review"
+ "Nothing to pick: the page is empty" = "Nincs mit választani: az oldal üres"
+ "Pick select: Tab and Shift+Tab move between layers, Enter goes into one, Shift+Enter out, Space selects, Escape cancels" = "Választó kijelölés: a Tab és a Shift+Tab a rétegek között lép, az Enter belép egybe, a Shift+Enter kilép, a Szóköz kijelöl, az Escape megszakít"
+ 
++"A layer in an auto layout frame is placed by its frame" = "Az automatikus elrendezésű keretben lévő réteget a kerete helyezi el"
++"Annotation" = "Megjegyzés"
++"Copy link to page" = "Oldal hivatkozásának másolása"
++"Duplicate group" = "Csoport kettőzése"
++"Edit variables" = "Változók szerkesztése"
++"Extra large" = "Extra nagy"
++"Huge" = "Óriási"
++"Invert zoom direction" = "Nagyítási irány megfordítása"
++"Large" = "Nagy"
++"Medium" = "Közepes"
++"New from selection" = "Új a kijelölésből"
++"No scope is shared by all the selected variables" = "A kijelölt változóknak nincs közös hatóköre"
++"Scope" = "Hatókör"
++"Select a row, a column or a full grid of three or more layers, outside an auto layout flow" = "Jelölj ki egy sort, egy oszlopot vagy egy teljes rácsot, legalább három réteggel, automatikus elrendezésen kívül"
++"Set as opening page" = "Beállítás kezdőoldalként"
++"Small" = "Kicsi"
++"Subscript" = "Alsó index"
++"Superscript" = "Felső index"
++"The canvas previews colors in sRGB; PNG, JPG and WebP exports that use the file's profile are tagged Display P3." = "A vászon sRGB-ben mutatja a színeket; a fájl profilját használó PNG-, JPG- és WebP-exportok Display P3 címkét kapnak."
++"This variant's value" = "Ennek a változatnak az értéke"
++"elbowed and curved connectors without a saved path are routed afresh" = "a mentett útvonal nélküli tört és ívelt összekötők útvonala újra kiszámítódik"
++"sticky layers import as frames with their text" = "a cetlirétegek a szövegükkel együtt keretként importálódnak"
++"swapped instances whose previous component isn't in the file took the new component's look" = "azok a lecserélt példányok, amelyek korábbi komponense nincs a fájlban, az új komponens megjelenését kapták"
+ [commands]
+ "align.bottom" = "Igazítás alulra"
+ "align.hcenter" = "Vízszintes középpontok igazítása"
+diff --git a/crates/ui-egui/locales/ro.toml b/crates/ui-egui/locales/ro.toml
+index ff8e6e9e..35abcb5f 100644
+--- a/crates/ui-egui/locales/ro.toml
++++ b/crates/ui-egui/locales/ro.toml
+@@ -2026,6 +2026,29 @@ status = "draft — needs native review"
+ "Nothing to pick: the page is empty" = "Nimic de ales: pagina este goală"
+ "Pick select: Tab and Shift+Tab move between layers, Enter goes into one, Shift+Enter out, Space selects, Escape cancels" = "Selecție prin alegere: Tab și Shift+Tab trec de la un strat la altul, Enter intră într-unul, Shift+Enter iese, Spațiu selectează, Escape anulează"
+ 
++"A layer in an auto layout frame is placed by its frame" = "Un strat dintr-un cadru cu aranjare automată este poziționat de cadrul său"
++"Annotation" = "Adnotare"
++"Copy link to page" = "Copiere link către pagină"
++"Duplicate group" = "Duplicare grup"
++"Edit variables" = "Editare variabile"
++"Extra large" = "Foarte mare"
++"Huge" = "Uriaș"
++"Invert zoom direction" = "Inversare direcție zoom"
++"Large" = "Mare"
++"Medium" = "Mediu"
++"New from selection" = "Nou din selecție"
++"No scope is shared by all the selected variables" = "Variabilele selectate nu au un domeniu comun"
++"Scope" = "Domeniu"
++"Select a row, a column or a full grid of three or more layers, outside an auto layout flow" = "Selectați un rând, o coloană sau o grilă completă de trei sau mai multe straturi, în afara unui flux cu aranjare automată"
++"Set as opening page" = "Setare ca pagină de deschidere"
++"Small" = "Mic"
++"Subscript" = "Indice"
++"Superscript" = "Exponent"
++"The canvas previews colors in sRGB; PNG, JPG and WebP exports that use the file's profile are tagged Display P3." = "Pânza previzualizează culorile în sRGB; exporturile PNG, JPG și WebP care folosesc profilul fișierului sunt etichetate Display P3."
++"This variant's value" = "Valoarea acestei variante"
++"elbowed and curved connectors without a saved path are routed afresh" = "conectorii frânți și curbați fără traseu salvat sunt retrasați"
++"sticky layers import as frames with their text" = "straturile notițe se importă ca cadre cu textul lor"
++"swapped instances whose previous component isn't in the file took the new component's look" = "instanțele înlocuite a căror componentă anterioară nu este în fișier au preluat aspectul noii componente"
+ [commands]
+ "align.bottom" = "Aliniere jos"
+ "align.hcenter" = "Aliniere centre orizontale"

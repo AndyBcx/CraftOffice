@@ -1,8 +1,8 @@
 diff --git a/apps/soundcraft/src/craftoffice_i18n/hu.tsv b/apps/soundcraft/src/craftoffice_i18n/hu.tsv
-index 221b4632..43b720f7 100644
+index 221b4632..3d42e35a 100644
 --- a/apps/soundcraft/src/craftoffice_i18n/hu.tsv
 +++ b/apps/soundcraft/src/craftoffice_i18n/hu.tsv
-@@ -1397,3 +1397,27 @@ Surround pan: drag the puck · double-click: front centre · Alt-drag: divergenc
+@@ -1397,3 +1397,427 @@ Surround pan: drag the puck · double-click: front centre · Alt-drag: divergenc
  Divergence (0 = point source)	Divergencia (0 = pontforrás)
  Elevation (height speakers)	Magasság (magassági hangsugárzók)
  CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	CraftOffice-kiadás – AndyBcx: magyar és román felület.
@@ -30,11 +30,411 @@ index 221b4632..43b720f7 100644
 +Apple Music, podcasts	Apple Music, podcastok
 +Quieter, more headroom	Halkabb, több tartalék
 +Radio and TV (EBU R128)	Rádió és TV (EBU R128)
++ (alternate playlist)	 (alternatív lejátszási lista)
++ (resampled to the device rate)	 (újramintavételezve az eszköz mintavételi frekvenciájára)
++ The file stays on disk.	 A fájl a lemezen marad.
++ The files stay on disk.	 A fájlok a lemezen maradnak.
++0.5 seconds	0,5 másodperc
++1 foot	1 láb
++1 sample	1 minta
++1 second	1 másodperc
++1 track	1 sáv
++1/16 note	1/16 hang
++1/2 note	1/2 hang
++1/32 note	1/32 hang
++1/4 note	1/4 hang
++1/64 note	1/64 hang
++1/8 note	1/8 hang
++10 samples	10 minta
++100 samples	100 minta
++1000 samples	1000 minta
++10000 samples	10000 minta
++16-bit	16 bites
++2 samples	2 minta
++24-bit	24 bites
++A browser with WebGPU or WebGL2 is required.	WebGPU-t vagy WebGL2-t támogató böngésző szükséges.
++Activate HEAT	HEAT bekapcsolása
++All MIDI	Minden MIDI
++All audio clips checked	Minden hangklip ellenőrizve
++All devices	Minden eszköz
++Amp Attack	Erősítő felfutás
++Amp Decay	Erősítő lecsengés
++Amp Release	Erősítő elengedés
++Amp Sustain	Erősítő kitartás
++Asymmetry	Aszimmetria
++Attack	Felfutás
++Automation mode	Automatizálási mód
++Aux Input	Aux bemenet
++Beat Detective	Ütemdetektív
++Bounce Mix	Mix lekeverése
++Cannot record: no MIDI input device is connected (Setup > Playback Engine lists them)	Nem lehet felvenni: nincs csatlakoztatott MIDI bemeneti eszköz (a Beállítás › Lejátszómotor listázza őket)
++Cannot record: the audio engine has not finished the previous record pass yet (is the audio device running?)	Nem lehet felvenni: a hangmotor még nem fejezte be az előző felvételt (fut a hangeszköz?)
++Ceiling	Plafon
++Center	Közép
++Channel	Csatorna
++Clip Looping	Klip ismétlése
++Clips/Markers	Klipek/jelölők
++Clips/Markers is available only for Grid	A Klipek/jelölők csak Rács módban érhető el
++Closed Hat Decay	Zárt cin lecsengése
++Comp Attack	Kompresszor felfutás
++Comp Makeup	Kompresszor kiegyenlítő erősítés
++Comp Ratio	Kompresszor arány
++Comp Release	Kompresszor elengedés
++Comp Thresh	Kompresszor küszöb
++Create Group	Csoport létrehozása
++Cutoff	Vágási frekvencia
++Cymbal Decay	Cintányér lecsengése
++DC Rmv	DC eltávolítás
++Depth	Mélység
++DestructivePunch	Roncsoló beugrás
++Diffusion	Diffúzió
++Direct Gain	Közvetlen erősítés
++Direct Solo	Közvetlen szóló
++Drums	Dobok
++EQ3 1-Band	EQ3 1 sávos
++EQ3 7-Band	EQ3 7 sávos
++Effect	Effekt
++Elastic Audio	Rugalmas hang
++Elastic Properties	Rugalmas tulajdonságok
++Equal Power	Egyenlő teljesítmény
++Exponential	Exponenciális
++Export — MIDI	Exportálás — MIDI
++Export — MusicXML	Exportálás — MusicXML
++Export — Selected Tracks as New Session	Exportálás — Kijelölt sávok új munkamenetként
++Feedback	Visszacsatolás
++File — Print Score	Fájl — Kotta nyomtatása
++File — Save As Template	Fájl — Mentés sablonként
++Filter Attack	Szűrő felfutás
++Filter Decay	Szűrő lecsengés
++Filter Env	Szűrő burkoló
++Filter Release	Szűrő elengedés
++Filter Sustain	Szűrő kitartás
++Fine	Finom
++Fine Tune	Finomhangolás
++Frequency	Frekvencia
++Frequency Shifter	Frekvenciaeltoló
++G major	G-dúr
++Gate Range	Kapu tartomány
++Gate Release	Kapu elengedés
++Gate Thresh	Kapu küszöb
++Glide	Csúszás
++Grabber	Megfogó
++Grid mode always snaps	Rács módban mindig illeszt
++HF Damping	Magas frekvenciás csillapítás
++HF Freq	Magas frekvencia
++HF Gain	Magas erősítés
++HMF Freq	Felső közép frekvencia
++HMF Gain	Felső közép erősítés
++HP Freq	Felüláteresztő frekvencia
++HPF Freq	Felüláteresztő szűrő frekvencia
++HPF Slope	Felüláteresztő szűrő meredekség
++High Freq	Magas frekvencia
++High Gain	Magas erősítés
++Highest Key	Legmagasabb hang
++Highest Velocity	Legnagyobb leütési erő
++Hold	Tartás
++Import Audio	Hang importálása
++Import MIDI	MIDI importálása
++Import — Clip Groups	Importálás — Klipcsoportok
++Import — Session Data	Importálás — Munkamenet adatai
++Import — Video	Importálás — Videó
++Instrument Track	Hangszersáv
++Key Tracking	Hangkövetés
++Kick Decay	Lábdob lecsengése
++Kick Tune	Lábdob hangolása
++Knee	Térd
++LF Freq	Mély frekvencia
++LF Gain	Mély erősítés
++LMF Freq	Alsó közép frekvencia
++LMF Gain	Alsó közép erősítés
++LP Freq	Aluláteresztő frekvencia
++LPF Freq	Aluláteresztő szűrő frekvencia
++LPF Slope	Aluláteresztő szűrő meredekség
++Limit	Határ
++Link to Tempo	Tempóhoz kötés
++Listen	Belehallgatás
++Loading SoundCraft…	A SoundCraft betöltése…
++Logarithmic	Logaritmikus
++Lookahead	Előretekintés
++Loop End	Hurok vége
++Loop Start	Hurok eleje
++Low Cut	Mélyvágás
++Low Freq	Mély frekvencia
++Low Gain	Mély erősítés
++Lower Gain	Alsó erősítés
++Lower Solo	Alsó szóló
++Lowest Key	Legmélyebb hang
++Lowest Velocity	Legkisebb leütési erő
++MF Freq	Közép frekvencia
++MF Gain	Közép erősítés
++MIDI Track	MIDI sáv
++MIDI input	MIDI bemenet
++MIDI input was dropped during the take: it is incomplete, and notes held at that point end there	A felvétel közben MIDI bemenet veszett el: a felvétel hiányos, és az akkor tartott hangok ott véget érnek
++Makeup	Kiegyenlítő erősítés
++Manual Trigger	Kézi indítás
++Master Fader	Fő hangerőszabályzó
++Mid Freq	Közép frekvencia
++Mid Gain	Közép erősítés
++Mod Depth	Moduláció mélysége
++Mod Rate	Moduláció sebessége
++Mod Source	Modulációs forrás
++Mode	Mód
++New Session	Új munkamenet
++New Tracks	Új sávok
++No MIDI input device found	Nem található MIDI bemeneti eszköz
++No engine	Nincs motor
++Noise	Zaj
++Noise Shaping	Zajformálás
++Not available yet.	Még nem érhető el.
++Nothing was recorded: the record-enabled tracks received no input	Nem készült felvétel: a felvételre kész sávok nem kaptak bemenetet
++Open Hat Decay	Nyitott cin lecsengése
++Open Session	Munkamenet megnyitása
++Osc 2 Detune	2. oszcillátor elhangolása
++Osc 2 Pitch	2. oszcillátor hangmagassága
++Osc Mix	Oszcillátorkeverés
++Output window	Kimeneti ablak
++Pencil	Ceruza
++Pitch	Hangmagasság
++Pitch Shift Legacy	Hangmagasság-eltolás (régi)
++Plate	Lemez
++Portuguese (Brazil)	Portugál (brazil)
++Pre-Delay	Előkésleltetés
++Pro Tools Projects	Pro Tools projektek
++Pro Tools Search	Pro Tools keresés
++Quantize strength	Kvantálás erőssége
++Range	Tartomány
++Rate	Sebesség
++Rate (BPM)	Sebesség (BPM)
++Ratio	Arány
++Read	Olvasás
++Readout	Kijelzés
++Rectify	Egyenirányítás
++Reduce motion	Kevesebb animáció
++Release	Elengedés
++Rename Clip	Klip átnevezése
++Rename Marker	Jelölő átnevezése
++Rename Selected Clips	Kijelölt klipek átnevezése
++Repeat	Ismétlés
++Resonance	Rezonancia
++Revert to Saved	Visszaállítás a mentettre
++Room	Szoba
++Root Note	Alaphang
++Routing Folder Track	Útválasztó mappasáv
++S-Curve	S-görbe
++SC HPF	Oldallánc felüláteresztő
++SC HPF Freq	Oldallánc felüláteresztő frekvencia
++Sample Start	Minta kezdete
++Score Setup	Kotta beállítása
++Scrubber	Görgető
++Selector	Kijelölő
++Session Setup	Munkamenet beállítása
++Shift (seconds)	Eltolás (másodperc)
++Shuffle is locked	A Keverés mód zárolva
++SigGen	Jelgenerátor
++Size	Méret
++Smart Tool	Okos eszköz
++Snare Decay	Pergődob lecsengése
++Snare Snappy	Pergődob sodronya
++Snare Tune	Pergődob hangolása
++Splice	Illesztés
++Spread	Szórás
++Store Plugin State	Bővítmény állapotának mentése
++Sustain	Kitartás
++Tempo Change (BPM)	Tempóváltás (BPM)
++The audio engine did not answer when the pass ended: the last MIDI notes played may be missing from the take	A hangmotor nem válaszolt a felvétel végén: az utoljára játszott MIDI hangok hiányozhatnak a felvételből
++Threshold	Küszöb
++Time	Idő
++Tom Decay	Tamtam lecsengése
++Tom Tune	Tamtam hangolása
++Tone	Hangszín
++Touch/Latch	Érintés/rögzítés
++Track — Save Track Preset	Sáv — Sáv-előbeállítás mentése
++Unknown label	Ismeretlen címke
++Unsaved Changes	Nem mentett változások
++Untitled	Névtelen
++Upper Gain	Felső erősítés
++Upper Solo	Felső szóló
++VCA Master	VCA főszabályzó
++Velocity Sens	Leütésérzékenység
++Video Track	Videósáv
++Waveform	Hullámforma
++Wet Solo	Effektes szóló
++Whole note	Egész hang
++Width	Szélesség
++Write	Írás
++Zoomer	Nagyító
++a clip on the timeline, which is removed too.	egy klip az idővonalon, amely szintén törlődik.
++a group needs at least one track	egy csoportnak legalább egy sáv kell
++a single creation is limited to 128 tracks	egyszerre legfeljebb 128 sáv hozható létre
++all insert slots are in use	minden beszúrási hely foglalt
++all send slots are in use	minden küldési hely foglalt
++analyse at most 20 minutes at a time	egyszerre legfeljebb 20 percet lehet elemezni
++audio	hang
++audio files go on audio tracks	a hangfájlok hangsávokra kerülnek
++automation path rejected: path is empty	automatizálási útvonal elutasítva: az útvonal üres
++bad feet	hibás láb érték
++bad frames	hibás képkocka érték
++blocks	blokkok
++clip	klip
++clip fades cannot also specify tracks or an edit range	a klipátmenetek mellett nem adható meg sáv vagy szerkesztési tartomány
++clip group file has too many clips	a klipcsoport-fájlban túl sok klip van
++clip has no length	a klipnek nincs hossza
++clip not found	a klip nem található
++comments	megjegyzések
++constant	állandó
++curvature must be a finite number from -1 to 1	a görbületnek -1 és 1 közötti számnak kell lennie
++curvature requires a clip and side	a görbülethez klip és oldal szükséges
++custom	egyéni
++cut	kivágás
++day	nap
++designate a target playlist first (Track › Designate as Target Playlist)	előbb jelölj ki céllistát (Sáv › Kijelölés céllistaként)
++each row must be an object without nested rows	minden sornak beágyazott sorok nélküli objektumnak kell lennie
++empty send slot	üres küldési hely
++empty slot	üres hely
++extreme	extrém
++factor must be a positive number	a szorzónak pozitív számnak kell lennie
++feet must be 0.. and frames 0..15	a láb legalább 0, a képkocka 0 és 15 közötti legyen
++file	fájl
++fit to window	ablakhoz igazítás
++folder	mappa
++front	elöl
++hour	óra
++in	be
++index out of range	az index a tartományon kívül esik
++insert	beszúrás
++internal error (see the log)	belső hiba (lásd a naplót)
++invert	fordítás
++is unavailable	nem érhető el
++jumbo	óriás
++large	nagy
++latch	rögzítés
++leave Shuffle mode before locking it	zárolás előtt lépj ki a Keverés módból
++length must be a positive sample count	a hossznak pozitív mintaszámnak kell lennie
++make a timeline selection first	előbb jelölj ki az idővonalon
++make an edit selection first	előbb jelölj ki szerkesztési tartományt
++marker	jelölő
++medium	közepes
++minute	perc
++modified	módosítva
++mute	némítás
++new	új
++no MIDI or instrument tracks to notate	nincs lekottázható MIDI- vagy hangszersáv
++no automation has been copied	nincs másolt automatizálás
++no clip effects have been copied	nincsenek másolt klipeffektek
++no clip gain has been copied	nincs másolt klip-erősítés
++no clips	nincsenek klipek
++no clips selected	nincs kijelölt klip
++no clips to export	nincs exportálható klip
++no markers on the clipboard	nincsenek jelölők a vágólapon
++no markers on the clipboard (copy a range that contains markers)	nincsenek jelölők a vágólapon (másolj jelölőket tartalmazó tartományt)
++no previous selection to restore	nincs visszaállítható előző kijelölés
++no selected clip has a sync point	egyik kijelölt klipnek sincs szinkronpontja
++no such audio file	nincs ilyen hangfájl
++no such clip	nincs ilyen klip
++no such clip, or it is edit-locked	nincs ilyen klip, vagy zárolt a szerkesztés ellen
++no such playlist	nincs ilyen lejátszási lista
++no such track	nincs ilyen sáv
++no track	nincs sáv
++none of the requested tracks hold MIDI	a kért sávok egyike sem tartalmaz MIDI-t
++not a MIDI clip	nem MIDI klip
++not a MIDI or instrument track	nem MIDI- vagy hangszersáv
++not a SoundCraft clip group file	nem SoundCraft klipcsoport-fájl
++not a regular file	nem szabályos fájl
++not a take SoundCraft recorded	nem a SoundCraft által rögzített felvétel
++not in a folder SoundCraft records into	nem abban a mappában van, ahová a SoundCraft rögzít
++not opened: the path is not valid	nincs megnyitva: az útvonal érvénytelen
++notes	hangjegyek
++nothing is selected	nincs kijelölve semmi
++nothing to import	nincs mit importálni
++nothing to move into that folder	nincs mit abba a mappába mozgatni
++nothing to redo	nincs mit újra végrehajtani
++nothing to undo	nincs mit visszavonni
++off	ki
++only instrument tracks have a sampler	csak a hangszersávoknak van mintavevője
++only instrument tracks have an instrument	csak a hangszersávoknak van hangszere
++pan	panoráma
++parabolic	parabolikus
++quantize	kvantálás
++read	olvasás
++recently	nemrég
++record-enable (or pass) the audio tracks to prepare	tedd felvételre késszé (vagy add meg) az előkészítendő hangsávokat
++regions	régiók
++s-curve	S-görbe
++samples	minták
++saved	mentve
++scale	skála
++select MIDI clips	jelölj ki MIDI klipeket
++select a MIDI or instrument track	jelölj ki egy MIDI- vagy hangszersávot
++select a VCA master	jelölj ki egy VCA főszabályzót
++select a clip	jelölj ki egy klipet
++select a clip in the Clip List	jelölj ki egy klipet a Kliplistában
++select a range on the timeline	jelölj ki egy tartományt az idővonalon
++select a range to analyse	jelölj ki egy elemzendő tartományt
++select an audio clip	jelölj ki egy hangklipet
++select an audio track to generate on	jelölj ki egy hangsávot a generáláshoz
++select audio clips first	előbb jelölj ki hangklipeket
++select audio on an audio track	jelölj ki hangot egy hangsávon
++select clips or files in the Clip List	jelölj ki klipeket vagy fájlokat a Kliplistában
++select one or more aux input tracks	jelölj ki egy vagy több aux bemeneti sávot
++select some audio first	előbb jelölj ki valamennyi hangot
++select two or more clips	jelölj ki két vagy több klipet
++selection	kijelölés
++selection is empty	a kijelölés üres
++side must be in or out	az oldal csak be vagy ki lehet
++slot out of range	a hely a tartományon kívül esik
++small	kicsi
++source channel unavailable	a forráscsatorna nem érhető el
++split would copy too much audio	a felosztás túl sok hangot másolna
++stop recording first	előbb állítsd le a felvételt
++stopped asking for audio	leállt a hangkérés
++stretch	nyújtás
++that playlist is already active	az a lejátszási lista már aktív
++the Video track has no clips	a videósávon nincsenek klipek
++the clip has no clip effects	a klipnek nincsenek klipeffektjei
++the clip is locked	a klip zárolva van
++the clip's audio is not loaded	a klip hangja nincs betöltve
++the clipboard is empty	a vágólap üres
++the clips can't land there: past the last track, or on a track that can't hold them	a klipek nem kerülhetnek oda: az utolsó sáv után vagy olyan sávon, amely nem fogadhatja őket
++the range contains more than 10,000 grid boundaries	a tartomány több mint 10 000 rácshatárt tartalmaz
++the sampler is not available	a mintavevő nem érhető el
++the scan was stopped	a keresés leállt
++the selection is empty	a kijelölés üres
++the selection is not a looped clip	a kijelölés nem ismétlődő klip
++the selection is too short	a kijelölés túl rövid
++the selection must cover a clip start, end or the boundary between two clips	a kijelölésnek le kell fednie egy klip elejét, végét vagy két klip határát
++the session has no Video track	a munkamenetben nincs videósáv
++the session has no tracks	a munkamenetben nincsenek sávok
++the session has not been saved	a munkamenet nincs mentve
++the target playlist is the main playlist	a céllista a fő lejátszási lista
++the track has no instrument	a sávnak nincs hangszere
++the track has no playlist	a sávnak nincs lejátszási listája
++the track's instrument is not the sampler	a sáv hangszere nem a mintavevő
++there is no audio to prepare	nincs előkészítendő hang
++times	alkalom
++too many tempo events: use a coarser resolution	túl sok tempóesemény: használj durvább felbontást
++too much audio to generate in one command	túl sok hang egyetlen paranccsal generáláshoz
++touch	érintés
++touch/latch	érintés/rögzítés
++transpose	transzponálás
++unknown format	ismeretlen formátum
++unknown grid value or format	ismeretlen rácsérték vagy formátum
++unknown height	ismeretlen magasság
++unknown mode	ismeretlen mód
++unknown nudge value or format	ismeretlen léptetési érték vagy formátum
++unknown plugin	ismeretlen bővítmény
++unknown ruler	ismeretlen vonalzó
++unknown tool	ismeretlen eszköz
++unknown track	ismeretlen sáv
++use F+FF, e.g. 12+08	használd az L+KK formát, pl. 12+08
++video	videó
++volume	hangerő
++waveform	hullámforma
++write	írás
 diff --git a/apps/soundcraft/src/craftoffice_i18n/ro.tsv b/apps/soundcraft/src/craftoffice_i18n/ro.tsv
-index 4d8c68e7..61e7fee3 100644
+index 4d8c68e7..69069a21 100644
 --- a/apps/soundcraft/src/craftoffice_i18n/ro.tsv
 +++ b/apps/soundcraft/src/craftoffice_i18n/ro.tsv
-@@ -1397,3 +1397,27 @@ Surround pan: drag the puck · double-click: front centre · Alt-drag: divergenc
+@@ -1397,3 +1397,427 @@ Surround pan: drag the puck · double-click: front centre · Alt-drag: divergenc
  Divergence (0 = point source)	Divergență (0 = sursă punctiformă)
  Elevation (height speakers)	Elevație (difuzoare de înălțime)
  CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
@@ -62,6 +462,406 @@ index 4d8c68e7..61e7fee3 100644
 +Apple Music, podcasts	Apple Music, podcasturi
 +Quieter, more headroom	Mai încet, mai multă rezervă
 +Radio and TV (EBU R128)	Radio și TV (EBU R128)
++ (alternate playlist)	 (listă de redare alternativă)
++ (resampled to the device rate)	 (reeșantionat la rata dispozitivului)
++ The file stays on disk.	 Fișierul rămâne pe disc.
++ The files stay on disk.	 Fișierele rămân pe disc.
++0.5 seconds	0,5 secunde
++1 foot	1 picior
++1 sample	1 eșantion
++1 second	1 secundă
++1 track	1 pistă
++1/16 note	Notă de 1/16
++1/2 note	Notă de 1/2
++1/32 note	Notă de 1/32
++1/4 note	Notă de 1/4
++1/64 note	Notă de 1/64
++1/8 note	Notă de 1/8
++10 samples	10 eșantioane
++100 samples	100 de eșantioane
++1000 samples	1000 de eșantioane
++10000 samples	10000 de eșantioane
++16-bit	16 biți
++2 samples	2 eșantioane
++24-bit	24 de biți
++A browser with WebGPU or WebGL2 is required.	Este necesar un browser cu WebGPU sau WebGL2.
++Activate HEAT	Activare HEAT
++All MIDI	Tot MIDI-ul
++All audio clips checked	Toate clipurile audio au fost verificate
++All devices	Toate dispozitivele
++Amp Attack	Atac amplificator
++Amp Decay	Descreștere amplificator
++Amp Release	Eliberare amplificator
++Amp Sustain	Susținere amplificator
++Asymmetry	Asimetrie
++Attack	Atac
++Automation mode	Mod automatizare
++Aux Input	Intrare auxiliară
++Beat Detective	Detector de ritm
++Bounce Mix	Mixare finală
++Cannot record: no MIDI input device is connected (Setup > Playback Engine lists them)	Nu se poate înregistra: nu este conectat niciun dispozitiv de intrare MIDI (Configurare › Motor de redare le afișează)
++Cannot record: the audio engine has not finished the previous record pass yet (is the audio device running?)	Nu se poate înregistra: motorul audio nu a terminat încă înregistrarea anterioară (dispozitivul audio funcționează?)
++Ceiling	Plafon
++Center	Centru
++Channel	Canal
++Clip Looping	Buclare clip
++Clips/Markers	Clipuri/markeri
++Clips/Markers is available only for Grid	Clipuri/markeri este disponibil doar pentru Grilă
++Closed Hat Decay	Descreștere hi-hat închis
++Comp Attack	Atac compresor
++Comp Makeup	Câștig de compensare compresor
++Comp Ratio	Raport compresor
++Comp Release	Eliberare compresor
++Comp Thresh	Prag compresor
++Create Group	Creare grup
++Cutoff	Frecvență de tăiere
++Cymbal Decay	Descreștere cinel
++DC Rmv	Eliminare DC
++Depth	Adâncime
++DestructivePunch	Punch distructiv
++Diffusion	Difuzie
++Direct Gain	Câștig direct
++Direct Solo	Solo direct
++Drums	Tobe
++EQ3 1-Band	EQ3 cu 1 bandă
++EQ3 7-Band	EQ3 cu 7 benzi
++Effect	Efect
++Elastic Audio	Audio elastic
++Elastic Properties	Proprietăți elastice
++Equal Power	Putere egală
++Exponential	Exponențial
++Export — MIDI	Exportare — MIDI
++Export — MusicXML	Exportare — MusicXML
++Export — Selected Tracks as New Session	Exportare — Pistele selectate ca sesiune nouă
++Feedback	Feedback
++File — Print Score	Fișier — Imprimare partitură
++File — Save As Template	Fișier — Salvare ca șablon
++Filter Attack	Atac filtru
++Filter Decay	Descreștere filtru
++Filter Env	Anvelopă filtru
++Filter Release	Eliberare filtru
++Filter Sustain	Susținere filtru
++Fine	Fin
++Fine Tune	Acord fin
++Frequency	Frecvență
++Frequency Shifter	Deplasator de frecvență
++G major	Sol major
++Gate Range	Interval poartă
++Gate Release	Eliberare poartă
++Gate Thresh	Prag poartă
++Glide	Glisare
++Grabber	Apucător
++Grid mode always snaps	Modul Grilă aliniază mereu
++HF Damping	Amortizare înalte
++HF Freq	Frecvență înalte
++HF Gain	Câștig înalte
++HMF Freq	Frecvență medii-înalte
++HMF Gain	Câștig medii-înalte
++HP Freq	Frecvență trece-sus
++HPF Freq	Frecvență filtru trece-sus
++HPF Slope	Pantă filtru trece-sus
++High Freq	Frecvență înaltă
++High Gain	Câștig înalte
++Highest Key	Cea mai înaltă notă
++Highest Velocity	Velocitate maximă
++Hold	Menținere
++Import Audio	Importare audio
++Import MIDI	Importare MIDI
++Import — Clip Groups	Importare — Grupuri de clipuri
++Import — Session Data	Importare — Date sesiune
++Import — Video	Importare — Video
++Instrument Track	Pistă de instrument
++Key Tracking	Urmărire notă
++Kick Decay	Descreștere tobă mare
++Kick Tune	Acord tobă mare
++Knee	Genunchi
++LF Freq	Frecvență joase
++LF Gain	Câștig joase
++LMF Freq	Frecvență medii-joase
++LMF Gain	Câștig medii-joase
++LP Freq	Frecvență trece-jos
++LPF Freq	Frecvență filtru trece-jos
++LPF Slope	Pantă filtru trece-jos
++Limit	Limită
++Link to Tempo	Legare la tempo
++Listen	Ascultare
++Loading SoundCraft…	Se încarcă SoundCraft…
++Logarithmic	Logaritmic
++Lookahead	Anticipare
++Loop End	Sfârșit buclă
++Loop Start	Început buclă
++Low Cut	Tăiere joase
++Low Freq	Frecvență joasă
++Low Gain	Câștig joase
++Lower Gain	Câștig inferior
++Lower Solo	Solo inferior
++Lowest Key	Cea mai joasă notă
++Lowest Velocity	Velocitate minimă
++MF Freq	Frecvență medii
++MF Gain	Câștig medii
++MIDI Track	Pistă MIDI
++MIDI input	Intrare MIDI
++MIDI input was dropped during the take: it is incomplete, and notes held at that point end there	Intrarea MIDI s-a pierdut în timpul înregistrării: aceasta este incompletă, iar notele ținute atunci se termină acolo
++Makeup	Compensare
++Manual Trigger	Declanșare manuală
++Master Fader	Fader principal
++Mid Freq	Frecvență medii
++Mid Gain	Câștig medii
++Mod Depth	Adâncime modulație
++Mod Rate	Rată modulație
++Mod Source	Sursă modulație
++Mode	Mod
++New Session	Sesiune nouă
++New Tracks	Piste noi
++No MIDI input device found	Nu s-a găsit niciun dispozitiv de intrare MIDI
++No engine	Niciun motor
++Noise	Zgomot
++Noise Shaping	Modelare zgomot
++Not available yet.	Încă nu este disponibil.
++Nothing was recorded: the record-enabled tracks received no input	Nu s-a înregistrat nimic: pistele armate nu au primit semnal
++Open Hat Decay	Descreștere hi-hat deschis
++Open Session	Deschidere sesiune
++Osc 2 Detune	Dezacordare oscilator 2
++Osc 2 Pitch	Înălțime oscilator 2
++Osc Mix	Mix oscilatoare
++Output window	Fereastră de ieșire
++Pencil	Creion
++Pitch	Înălțime
++Pitch Shift Legacy	Transpunere (vechi)
++Plate	Placă
++Portuguese (Brazil)	Portugheză (Brazilia)
++Pre-Delay	Pre-întârziere
++Pro Tools Projects	Proiecte Pro Tools
++Pro Tools Search	Căutare Pro Tools
++Quantize strength	Intensitate cuantizare
++Range	Interval
++Rate	Rată
++Rate (BPM)	Rată (BPM)
++Ratio	Raport
++Read	Citire
++Readout	Afișaj
++Rectify	Redresare
++Reduce motion	Reducere mișcare
++Release	Eliberare
++Rename Clip	Redenumire clip
++Rename Marker	Redenumire marker
++Rename Selected Clips	Redenumire clipuri selectate
++Repeat	Repetare
++Resonance	Rezonanță
++Revert to Saved	Revenire la versiunea salvată
++Room	Cameră
++Root Note	Notă fundamentală
++Routing Folder Track	Pistă dosar de rutare
++S-Curve	Curbă S
++SC HPF	Trece-sus lanț lateral
++SC HPF Freq	Frecvență trece-sus lanț lateral
++Sample Start	Început eșantion
++Score Setup	Configurare partitură
++Scrubber	Scrubber
++Selector	Selector
++Session Setup	Configurare sesiune
++Shift (seconds)	Decalaj (secunde)
++Shuffle is locked	Modul Amestecare este blocat
++SigGen	Generator de semnal
++Size	Dimensiune
++Smart Tool	Instrument inteligent
++Snare Decay	Descreștere tobă mică
++Snare Snappy	Arcuri tobă mică
++Snare Tune	Acord tobă mică
++Splice	Îmbinare
++Spread	Răspândire
++Store Plugin State	Salvare stare plugin
++Sustain	Susținere
++Tempo Change (BPM)	Schimbare tempo (BPM)
++The audio engine did not answer when the pass ended: the last MIDI notes played may be missing from the take	Motorul audio nu a răspuns la sfârșitul înregistrării: ultimele note MIDI cântate pot lipsi din înregistrare
++Threshold	Prag
++Time	Timp
++Tom Decay	Descreștere tom
++Tom Tune	Acord tom
++Tone	Ton
++Touch/Latch	Atingere/blocare
++Track — Save Track Preset	Pistă — Salvare presetare pistă
++Unknown label	Etichetă necunoscută
++Unsaved Changes	Modificări nesalvate
++Untitled	Fără titlu
++Upper Gain	Câștig superior
++Upper Solo	Solo superior
++VCA Master	VCA principal
++Velocity Sens	Sensibilitate la velocitate
++Video Track	Pistă video
++Waveform	Formă de undă
++Wet Solo	Solo procesat
++Whole note	Notă întreagă
++Width	Lățime
++Write	Scriere
++Zoomer	Zoom
++a clip on the timeline, which is removed too.	un clip de pe cronologie, care este eliminat și el.
++a group needs at least one track	un grup are nevoie de cel puțin o pistă
++a single creation is limited to 128 tracks	o singură creare este limitată la 128 de piste
++all insert slots are in use	toate sloturile de inserție sunt ocupate
++all send slots are in use	toate sloturile de trimitere sunt ocupate
++analyse at most 20 minutes at a time	analizați cel mult 20 de minute odată
++audio	audio
++audio files go on audio tracks	fișierele audio merg pe piste audio
++automation path rejected: path is empty	traseu de automatizare respins: traseul este gol
++bad feet	valoare greșită pentru picioare
++bad frames	valoare greșită pentru cadre
++blocks	blocuri
++clip	clip
++clip fades cannot also specify tracks or an edit range	fade-urile de clip nu pot specifica și piste sau un interval de editare
++clip group file has too many clips	fișierul grupului de clipuri are prea multe clipuri
++clip has no length	clipul nu are lungime
++clip not found	clipul nu a fost găsit
++comments	comentarii
++constant	constant
++curvature must be a finite number from -1 to 1	curbura trebuie să fie un număr finit între -1 și 1
++curvature requires a clip and side	curbura necesită un clip și o parte
++custom	personalizat
++cut	tăiere
++day	zi
++designate a target playlist first (Track › Designate as Target Playlist)	desemnați mai întâi o listă de redare țintă (Pistă › Desemnare ca listă țintă)
++each row must be an object without nested rows	fiecare rând trebuie să fie un obiect fără rânduri imbricate
++empty send slot	slot de trimitere gol
++empty slot	slot gol
++extreme	extrem
++factor must be a positive number	factorul trebuie să fie un număr pozitiv
++feet must be 0.. and frames 0..15	picioarele trebuie să fie 0.. iar cadrele 0..15
++file	fișier
++fit to window	potrivire în fereastră
++folder	dosar
++front	față
++hour	oră
++in	intrare
++index out of range	index în afara intervalului
++insert	inserție
++internal error (see the log)	eroare internă (vedeți jurnalul)
++invert	inversare
++is unavailable	nu este disponibil
++jumbo	foarte mare
++large	mare
++latch	blocare
++leave Shuffle mode before locking it	ieșiți din modul Amestecare înainte de a-l bloca
++length must be a positive sample count	lungimea trebuie să fie un număr pozitiv de eșantioane
++make a timeline selection first	faceți mai întâi o selecție pe cronologie
++make an edit selection first	faceți mai întâi o selecție de editare
++marker	marker
++medium	mediu
++minute	minut
++modified	modificat
++mute	mut
++new	nou
++no MIDI or instrument tracks to notate	nu există piste MIDI sau de instrument de notat
++no automation has been copied	nu a fost copiată nicio automatizare
++no clip effects have been copied	nu au fost copiate efecte de clip
++no clip gain has been copied	nu a fost copiat câștigul clipului
++no clips	niciun clip
++no clips selected	niciun clip selectat
++no clips to export	niciun clip de exportat
++no markers on the clipboard	nu există markeri în clipboard
++no markers on the clipboard (copy a range that contains markers)	nu există markeri în clipboard (copiați un interval care conține markeri)
++no previous selection to restore	nu există o selecție anterioară de restaurat
++no selected clip has a sync point	niciun clip selectat nu are punct de sincronizare
++no such audio file	nu există acest fișier audio
++no such clip	nu există acest clip
++no such clip, or it is edit-locked	nu există acest clip sau este blocat la editare
++no such playlist	nu există această listă de redare
++no such track	nu există această pistă
++no track	nicio pistă
++none of the requested tracks hold MIDI	niciuna dintre pistele cerute nu conține MIDI
++not a MIDI clip	nu este un clip MIDI
++not a MIDI or instrument track	nu este o pistă MIDI sau de instrument
++not a SoundCraft clip group file	nu este un fișier de grup de clipuri SoundCraft
++not a regular file	nu este un fișier obișnuit
++not a take SoundCraft recorded	nu este o înregistrare făcută de SoundCraft
++not in a folder SoundCraft records into	nu este într-un dosar în care înregistrează SoundCraft
++not opened: the path is not valid	nu s-a deschis: calea nu este validă
++notes	note
++nothing is selected	nimic nu este selectat
++nothing to import	nimic de importat
++nothing to move into that folder	nimic de mutat în acel dosar
++nothing to redo	nimic de refăcut
++nothing to undo	nimic de anulat
++off	oprit
++only instrument tracks have a sampler	doar pistele de instrument au sampler
++only instrument tracks have an instrument	doar pistele de instrument au un instrument
++pan	panoramă
++parabolic	parabolic
++quantize	cuantizare
++read	citire
++recently	recent
++record-enable (or pass) the audio tracks to prepare	armați (sau specificați) pistele audio de pregătit
++regions	regiuni
++s-curve	curbă S
++samples	eșantioane
++saved	salvat
++scale	scară
++select MIDI clips	selectați clipuri MIDI
++select a MIDI or instrument track	selectați o pistă MIDI sau de instrument
++select a VCA master	selectați un VCA principal
++select a clip	selectați un clip
++select a clip in the Clip List	selectați un clip în Lista de clipuri
++select a range on the timeline	selectați un interval pe cronologie
++select a range to analyse	selectați un interval de analizat
++select an audio clip	selectați un clip audio
++select an audio track to generate on	selectați o pistă audio pe care să generați
++select audio clips first	selectați mai întâi clipuri audio
++select audio on an audio track	selectați audio pe o pistă audio
++select clips or files in the Clip List	selectați clipuri sau fișiere în Lista de clipuri
++select one or more aux input tracks	selectați una sau mai multe piste de intrare auxiliară
++select some audio first	selectați mai întâi niște audio
++select two or more clips	selectați două sau mai multe clipuri
++selection	selecție
++selection is empty	selecția este goală
++side must be in or out	partea trebuie să fie in sau out
++slot out of range	slot în afara intervalului
++small	mic
++source channel unavailable	canalul sursă nu este disponibil
++split would copy too much audio	împărțirea ar copia prea mult audio
++stop recording first	opriți mai întâi înregistrarea
++stopped asking for audio	a încetat să ceară audio
++stretch	întindere
++that playlist is already active	acea listă de redare este deja activă
++the Video track has no clips	pista Video nu are clipuri
++the clip has no clip effects	clipul nu are efecte de clip
++the clip is locked	clipul este blocat
++the clip's audio is not loaded	audio-ul clipului nu este încărcat
++the clipboard is empty	clipboard-ul este gol
++the clips can't land there: past the last track, or on a track that can't hold them	clipurile nu pot ajunge acolo: după ultima pistă sau pe o pistă care nu le poate conține
++the range contains more than 10,000 grid boundaries	intervalul conține peste 10.000 de limite de grilă
++the sampler is not available	samplerul nu este disponibil
++the scan was stopped	scanarea a fost oprită
++the selection is empty	selecția este goală
++the selection is not a looped clip	selecția nu este un clip în buclă
++the selection is too short	selecția este prea scurtă
++the selection must cover a clip start, end or the boundary between two clips	selecția trebuie să cuprindă începutul sau sfârșitul unui clip ori limita dintre două clipuri
++the session has no Video track	sesiunea nu are pistă Video
++the session has no tracks	sesiunea nu are piste
++the session has not been saved	sesiunea nu a fost salvată
++the target playlist is the main playlist	lista țintă este lista principală
++the track has no instrument	pista nu are instrument
++the track has no playlist	pista nu are listă de redare
++the track's instrument is not the sampler	instrumentul pistei nu este samplerul
++there is no audio to prepare	nu există audio de pregătit
++times	ori
++too many tempo events: use a coarser resolution	prea multe evenimente de tempo: folosiți o rezoluție mai grosieră
++too much audio to generate in one command	prea mult audio de generat într-o singură comandă
++touch	atingere
++touch/latch	atingere/blocare
++transpose	transpunere
++unknown format	format necunoscut
++unknown grid value or format	valoare sau format de grilă necunoscut
++unknown height	înălțime necunoscută
++unknown mode	mod necunoscut
++unknown nudge value or format	valoare sau format de deplasare necunoscut
++unknown plugin	plugin necunoscut
++unknown ruler	riglă necunoscută
++unknown tool	instrument necunoscut
++unknown track	pistă necunoscută
++use F+FF, e.g. 12+08	folosiți F+FF, de ex. 12+08
++video	video
++volume	volum
++waveform	formă de undă
++write	scriere
 diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
 index fe6feed0..d0cec598 100644
 --- a/crates/ui-egui/src/app.rs

@@ -488,10 +488,10 @@ index 00000000..a58dc5f7
 +    Ok(Status::Done { before, after })
 +}
 diff --git a/crates/ui-egui/src/i18n/hu.tsv b/crates/ui-egui/src/i18n/hu.tsv
-index 486e3fba..d5c9cc2a 100644
+index 486e3fba..f97addab 100644
 --- a/crates/ui-egui/src/i18n/hu.tsv
 +++ b/crates/ui-egui/src/i18n/hu.tsv
-@@ -3764,3 +3764,25 @@
+@@ -3764,3 +3764,30 @@
  	Toggle Color Grading Section	Színtónusozás szakasz be/ki
  	Color Grading Section	Színtónusozás szakasz
  	Read Video Scopes	Videómérők leolvasása
@@ -517,11 +517,16 @@ index 486e3fba..d5c9cc2a 100644
 +	stopped	leállítva
 +	already small: it would not get smaller	már kicsi: nem lenne kisebb
 +	the output folder must differ from the source	a célmappa nem lehet azonos a forrással
++	Previous: {name}	Előző: {name}
++	Next: {name}	Következő: {name}
++	Slip: {offset} frame	Csúsztatás: {offset} képkocka
++	Slip: {offset} frames	Csúsztatás: {offset} képkocka
++	at the media limit	a média határán
 diff --git a/crates/ui-egui/src/i18n/ro.tsv b/crates/ui-egui/src/i18n/ro.tsv
-index 658ff42d..0173b204 100644
+index 658ff42d..884c510f 100644
 --- a/crates/ui-egui/src/i18n/ro.tsv
 +++ b/crates/ui-egui/src/i18n/ro.tsv
-@@ -3765,3 +3765,25 @@
+@@ -3765,3 +3765,30 @@
  	Toggle Color Grading Section	Comutare secțiune gradare culoare
  	Color Grading Section	Secțiune gradare culoare
  	Read Video Scopes	Citire instrumente de măsură video
@@ -547,6 +552,11 @@ index 658ff42d..0173b204 100644
 +	stopped	oprit
 +	already small: it would not get smaller	deja mic: nu ar deveni mai mic
 +	the output folder must differ from the source	dosarul de ieșire trebuie să difere de sursă
++	Previous: {name}	Anterior: {name}
++	Next: {name}	Următor: {name}
++	Slip: {offset} frame	Glisare: {offset} cadru
++	Slip: {offset} frames	Glisare: {offset} cadre
++	at the media limit	la limita materialului
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
 index 521174da..ec6a6715 100644
 --- a/crates/ui-egui/src/lib.rs

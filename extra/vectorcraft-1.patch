@@ -148,3 +148,23 @@ index 89f21a0ce..83858098d 100644
  ];
  
  /// The codes of [`EMBEDDED`] the interface offers. Browsers cannot use the native installed-font
+diff --git a/crates/ui-egui/src/i18n/hu.tsv b/crates/ui-egui/src/i18n/hu.tsv
+index 2cd00f025..7be37eca2 100644
+--- a/crates/ui-egui/src/i18n/hu.tsv
++++ b/crates/ui-egui/src/i18n/hu.tsv
+@@ -10872,3 +10872,5 @@ breakText	Glyphs	Glifák
+ # #5804 native-picked raster editor (draft translations; native review welcome).
+ 	Edit Original with:	Eredeti szerkesztése ezzel:
+ file-filter	Applications	Alkalmazások
++@msg	Saved {path} with {_1} note(s): {first}	{path} mentve, {_1} megjegyzéssel: {first}
++@msg	Exported {what} with {_1} note(s): {first}	{what} exportálva, {_1} megjegyzéssel: {first}
+diff --git a/crates/ui-egui/src/i18n/ro.tsv b/crates/ui-egui/src/i18n/ro.tsv
+index 770fa5da8..1df463a0e 100644
+--- a/crates/ui-egui/src/i18n/ro.tsv
++++ b/crates/ui-egui/src/i18n/ro.tsv
+@@ -6747,3 +6747,5 @@ breakText	Glyphs	Glife
+ 	Deferred Effects	Efecte amânate
+ @msg	no plug-in effect is deferred	niciun efect de plugin nu este amânat
+ @msgplural	Opened with {n} plug-in effect deferred. Effect › Refresh Deferred Effects runs it.|Opened with {n} plug-in effects deferred. Effect › Refresh Deferred Effects runs them.	Deschis cu {n} efect de plugin amânat. Efect › Reîmprospătare efecte amânate îl rulează.|Deschis cu {n} efecte de plugin amânate. Efect › Reîmprospătare efecte amânate le rulează.|Deschis cu {n} de efecte de plugin amânate. Efect › Reîmprospătare efecte amânate le rulează.
++@msg	Saved {path} with {_1} note(s): {first}	{path} salvat cu {_1} notă(e): {first}
++@msg	Exported {what} with {_1} note(s): {first}	{what} exportat cu {_1} notă(e): {first}

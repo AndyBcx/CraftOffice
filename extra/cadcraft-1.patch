@@ -20,3 +20,51 @@ index de5bc98e..262fafd5 100644
      Language { code: "en", name: "English", source: "", plural: plural_en, plural_forms: 2, catalog: OnceLock::new() },
      Language { code: "pl", name: "Polski", source: include_str!("i18n/pl.tsv"), plural: plural_pl, plural_forms: 3, catalog: OnceLock::new() },
      // Greek: one for exactly 1; other for zero and all other integer counts.
+diff --git a/crates/ui-egui/src/i18n/hu.tsv b/crates/ui-egui/src/i18n/hu.tsv
+index 54d102b4..9be4a9cc 100644
+--- a/crates/ui-egui/src/i18n/hu.tsv
++++ b/crates/ui-egui/src/i18n/hu.tsv
+@@ -1410,3 +1410,5 @@ menu	View	Nézet
+ 
+ # ArtCraft feature naming
+ 	Additional Tools	További eszközök
++	Describe Properties	Tulajdonságok leírása
++	Analyze Shapes	Alakzatok elemzése
+diff --git a/crates/ui-egui/src/i18n/ro.tsv b/crates/ui-egui/src/i18n/ro.tsv
+index 4bb5530f..12f7f7cb 100644
+--- a/crates/ui-egui/src/i18n/ro.tsv
++++ b/crates/ui-egui/src/i18n/ro.tsv
+@@ -1381,3 +1381,33 @@ menu	View	Vizualizare
+ 	The plot made no PDF to print.	Plotarea nu a produs un PDF de imprimat.
+ 	Sending to the printer	Se trimite la imprimanta
+ 	CraftOffice edition by AndyBcx: Hungarian and Romanian interface.	Ediția CraftOffice de AndyBcx: interfață în maghiară și română.
++	Describe Properties	Descriere proprietăți
++	Analyze Shapes	Analiză forme
++	Add a drawing file as a block library	Adăugare fișier desen ca bibliotecă de blocuri
++	Add a folder of drawings or a drawing file to use its blocks.	Adăugați un dosar cu desene sau un fișier desen pentru a-i folosi blocurile.
++	Block Libraries	Biblioteci de blocuri
++	Block Library	Bibliotecă de blocuri
++	Blocks Palette	Paletă blocuri
++	Click a block, then pick its insertion point.	Faceți clic pe un bloc, apoi alegeți punctul de inserție.
++	Current Drawing	Desenul curent
++	Details	Detalii
++	Extra Large Icons	Pictograme foarte mari
++	Folder or file	Dosar sau fișier
++	Import Library Block	Importare bloc din bibliotecă
++	Insert and Explode	Inserare și descompunere
++	Large Icons	Pictograme mari
++	Libraries	Biblioteci
++	Medium Icons	Pictograme medii
++	No block matches the filter.	Niciun bloc nu corespunde filtrului.
++	This block is already in the drawing, so its definition is used.	Acest bloc există deja în desen, așa că se folosește definiția lui.
++	Open Library...	Deschidere bibliotecă...
++	Read the library again	Recitire bibliotecă
++	Reading the library...	Se citește biblioteca...
++	Refresh	Reîmprospătare
++	Remove from the list	Eliminare din listă
++	Repeat Placement	Repetare plasare
++	Small Icons	Pictograme mici
++	This drawing has no blocks.	Acest desen nu are blocuri.
++	This library has no drawings or blocks.	Această bibliotecă nu are desene sau blocuri.
++	Only the first {n} are shown.	Sunt afișate doar primele {n}.
++	Additional Tools	Instrumente suplimentare
