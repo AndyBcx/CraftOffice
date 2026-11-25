@@ -1,0 +1,68 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 9f58484..799bd36 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1711,8 +1711,6 @@ dependencies = [
+ [[package]]
+ name = "ecolor"
+ version = "0.37.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "31bcbef0d4263a63eb32c4834e5d711613035ce1333468e107d928923e21e6e2"
+ dependencies = [
+  "bytemuck",
+  "emath",
+@@ -1758,8 +1756,6 @@ dependencies = [
+ [[package]]
+ name = "egui"
+ version = "0.37.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "bec9144f49b7a28b5f395d3147e325b4fe3e77ba686eac11d1bdf0a7da3f375f"
+ dependencies = [
+  "accesskit",
+  "ahash",
+@@ -1842,8 +1838,6 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
+ [[package]]
+ name = "emath"
+ version = "0.37.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e73ce90f54750be8672c02be0743fe47530e6f251e066f0ee2869b59eb297af5"
+ dependencies = [
+  "bytemuck",
+ ]
+@@ -1892,8 +1886,6 @@ dependencies = [
+ [[package]]
+ name = "epaint"
+ version = "0.37.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "97bac86ae3dde93fc3951e790951caea739ff39a6c89d909cdaf1d9278dbb1bd"
+ dependencies = [
+  "ahash",
+  "bytemuck",
+@@ -1909,6 +1901,7 @@ dependencies = [
+  "self_cell",
+  "skrifa",
+  "smallvec",
++ "unicode-bidi",
+  "unicode-general-category",
+  "unicode-properties",
+  "unicode-segmentation",
+@@ -1918,8 +1911,6 @@ dependencies = [
+ [[package]]
+ name = "epaint_default_fonts"
+ version = "0.37.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "cfc1cc505827f4c23eedc297975a0fd038268d41293f389dd8ff3b574aefab19"
+ 
+ [[package]]
+ name = "equator"
+diff --git a/Cargo.toml b/Cargo.toml
+index 06248ff..7180eed 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -236,4 +236,5 @@ opt-level = 3
+ opt-level = 3
+ 
+ [patch.crates-io.egui]
+-path = "/home/claude/egui-hook-036"
++# CraftOffice: egui 0.37 (ArtCraft's version) with the text hook for the translations
++path = "/home/claude/egui-hook-crate-0.37.0"

@@ -1,18 +1,18 @@
 diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
-index 250a7e26..40ce0399 100644
+index fba79d53..a1b550ee 100644
 --- a/crates/ui-egui/src/app.rs
 +++ b/crates/ui-egui/src/app.rs
-@@ -531,6 +531,8 @@ impl eframe::App for FilmcraftApp {
+@@ -533,6 +533,8 @@ impl eframe::App for FilmcraftApp {
              self.suspended_ime_controls(&ctx);
          }
          self.ui_inner(ui, frame);
 +        #[cfg(not(target_arch = "wasm32"))]
 +        crate::craftoffice_compress::show(self, &ctx);
          self.finish_ime_reset_ui(&ctx);
+         crate::framework::zoom_keys(&ctx);
      }
- }
 diff --git a/crates/ui-egui/src/app/input.rs b/crates/ui-egui/src/app/input.rs
-index b911e4be..229d3eea 100644
+index 288a9b9f..a64e214a 100644
 --- a/crates/ui-egui/src/app/input.rs
 +++ b/crates/ui-egui/src/app/input.rs
 @@ -5,6 +5,11 @@ impl FilmcraftApp {
@@ -558,17 +558,17 @@ index 658ff42d..884c510f 100644
 +	Slip: {offset} frames	Glisare: {offset} cadre
 +	at the media limit	la limita materialului
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index 521174da..ec6a6715 100644
+index 43f389e5..f801d413 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
-@@ -420,3 +420,5 @@ pub struct GpuState {
+@@ -433,3 +433,5 @@ pub struct GpuState {
  
  #[doc(hidden)]
  pub mod craftoffice_brand;
 +#[cfg(not(target_arch = "wasm32"))]
 +pub mod craftoffice_compress;
 diff --git a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
-index b1fae898..16946b83 100644
+index 2e82cf0f..7d16e5bd 100644
 --- a/crates/ui-egui/src/menus.rs
 +++ b/crates/ui-egui/src/menus.rs
 @@ -149,6 +149,8 @@ pub const UI_COMMANDS: &[UiCommand] = &[

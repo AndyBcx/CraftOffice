@@ -98,20 +98,20 @@ jobs:
           - { app: wordcraft,      src: tar:wordcraft-main }
           - { app: gridcraft,      src: tar:gridcraft-main }
           - { app: pdfcraft,       src: rebase:9b3e6d6f38de906c758d93e8ece45cbf105fd515:6e910675c68dd5092e889065cfe8d0274c1b2742, i18n: 866aff71dd63d8369eb100b9c432b5af1400c22a }
-          - { app: photocraft,     src: rebase:45066c48292e92229ada3459a83453439514c83d:27c629f78903a483cc8de1c111758bd7296ebbed, i18n: e02939ef009218e81c44e8ec001fbb7603461de4 }
-          - { app: deckcraft,      src: rebase:7cc73ab1895ed2e30c8afbcada20c70b9ea0a440:9db2fa0ca994ad8ae8d9cc5032d860ae985477d5 }
-          - { app: designcraft,    src: rebase:33a467872268c98536231491865b4011b0275b17:39651f6603ee2aec709c676e4a7b76e350ea1dcc }
-          - { app: vectorcraft,    src: rebase:f4922aa7ac99a4f6d56fc68a83a44945207ec610:18d2939ffccf68ac1aa66e78622461fcee0002d5 }
-          - { app: lightcraft,     src: rebase:361e3bc0c838ffe5e5cea515b1fe5b71951989c6:5a29fe602b5a2680d6771890a43380cd6bc34558 }
-          - { app: filmcraft,      src: rebase:cedf0c9bd060eb06a977d532402be2097c9ebe42:ba6fe10529c7bf5d2a9283f9de2e35c0ccff926c }
-          - { app: effectcraft,    src: rebase:582344dd4ef462362c02e56e3094de7af01847ab:86af5cba7f6976fe2b4561df4e8021ba807591f5 }
-          - { app: soundcraft,     src: rebase:a52bbdccbe15342f44e0de1906bf71a621e7a68f:7391fc7465b45f0159c8044a521d77b0a309de7f }
-          - { app: anicraft,       src: rebase:d0beaf253274948b55ee9e1107749f9491bff880:837c3edfd69956a41c1bda21db2718a67dfb5ee6 }
-          - { app: figcraft,       src: rebase:4acc293c2ec941ac1400837ee7e3ab51780399f8:c01d391df75cc7a9f04bf3879722770727d89f8d }
-          - { app: cadcraft,       src: rebase:7526dc62c14e71b3c8d46e73bbf1fa29ef506af1:ddb9a424ef4af8191e668009cf930c9f4a8435f3 }
-          - { app: materialcraft,  src: rebase:65f7bfd3e5f40d695d03162285879f0f8079ff6c:356c066e838c1f8ae31dce8a0ab370d889c8f868 }
-          - { app: texturecraft,   src: rebase:34a196190fe2daa2f43017a0f32b254cca4836f2:021ff6fe8b04760a4d75b54e03d088f8e4b3828c }
-          - { app: craft-anything, src: rebase:3d5eb2577397ac632fb6dfffd94aa9787ad17acc:572877eded9911e523a0d70ffc6207a1d4c31ba6 }
+          - { app: photocraft,     src: rebase:45066c48292e92229ada3459a83453439514c83d:e22facf45b0e7f0fbeb3b439ed44a950da9783b4, i18n: e02939ef009218e81c44e8ec001fbb7603461de4 }
+          - { app: deckcraft,      src: rebase:7cc73ab1895ed2e30c8afbcada20c70b9ea0a440:02f7fcdf734bf37396112bdfa634f27d0d424fbf }
+          - { app: designcraft,    src: rebase:33a467872268c98536231491865b4011b0275b17:cdd650ccddcd945bc3bd050f40299955a7dd1c4b }
+          - { app: vectorcraft,    src: rebase:f4922aa7ac99a4f6d56fc68a83a44945207ec610:99f7de526289f9e50bf387b81d1fcefe904a0f15 }
+          - { app: lightcraft,     src: rebase:361e3bc0c838ffe5e5cea515b1fe5b71951989c6:ea033fbe1c6dacdc7e1e99ee5a3e9fa0ce35d78c }
+          - { app: filmcraft,      src: rebase:cedf0c9bd060eb06a977d532402be2097c9ebe42:740adb32cc38a9c685ef531c2d6a8e57cde66203 }
+          - { app: effectcraft,    src: rebase:582344dd4ef462362c02e56e3094de7af01847ab:59aed45057561ff2ca0e3c27ab849eebbfaf71dc }
+          - { app: soundcraft,     src: rebase:a52bbdccbe15342f44e0de1906bf71a621e7a68f:768c0f972d6fce82224eb8db001094868a0c321a }
+          - { app: anicraft,       src: rebase:d0beaf253274948b55ee9e1107749f9491bff880:87e3c465f19eceada4d7604e9dbb1ef9ad69680e }
+          - { app: figcraft,       src: rebase:4acc293c2ec941ac1400837ee7e3ab51780399f8:ef2a9eeefc7af519fe7c26cc4c4b31d2284b09af }
+          - { app: cadcraft,       src: rebase:7526dc62c14e71b3c8d46e73bbf1fa29ef506af1:0d4b100209990e485891d85c70ff465c8e709156 }
+          - { app: materialcraft,  src: rebase:65f7bfd3e5f40d695d03162285879f0f8079ff6c:a52a8ff951f4a9ba2941067749775a8340cc0c01 }
+          - { app: texturecraft,   src: rebase:34a196190fe2daa2f43017a0f32b254cca4836f2:14f650202974b509524950048305f1f36fee4282 }
+          - { app: craft-anything, src: rebase:3d5eb2577397ac632fb6dfffd94aa9787ad17acc:4f0f744b7e2ad16198a7b08b9edc53286b1b8b67 }
     steps:
       - name: Git settings
         if: ${{ !inputs.only || inputs.only == matrix.app }}

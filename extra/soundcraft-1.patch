@@ -1432,22 +1432,22 @@ index 00000000..b41f2ff0
 +    }
 +}
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index a93bd084..5da1f164 100644
+index 8f41d305..05f35f68 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
-@@ -17,6 +17,7 @@ pub mod aaf_import;
- pub mod appearance;
+@@ -18,6 +18,7 @@ pub mod appearance;
  pub mod bounce;
+ pub mod channel_titles;
  pub mod control;
 +pub mod craftoffice_batch;
  pub mod credits;
  pub mod dialogs;
  pub mod docking;
 diff --git a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
-index 12e3440c..31f01ba2 100644
+index ca015b42..d14818b3 100644
 --- a/crates/ui-egui/src/menus.rs
 +++ b/crates/ui-egui/src/menus.rs
-@@ -291,6 +291,10 @@ pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
+@@ -292,6 +292,10 @@ pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
                          if ui.button(crate::localization::text("Session Audio Health")).clicked() {
                              let _ = app.run("window.audio_health", json!({"value": true}));
                          }
@@ -1459,10 +1459,10 @@ index 12e3440c..31f01ba2 100644
                          if ui.button(crate::localization::text("Quit")).clicked() {
                              let _ = crate::dialogs::run_or_ask(app, "app.quit", json!({}));
 diff --git a/crates/ui-egui/src/panels/about.rs b/crates/ui-egui/src/panels/about.rs
-index b5ea346b..47530cfd 100644
+index 734ce0eb..324490ae 100644
 --- a/crates/ui-egui/src/panels/about.rs
 +++ b/crates/ui-egui/src/panels/about.rs
-@@ -33,12 +33,12 @@ pub(super) fn about(app: &mut SoundApp, ctx: &egui::Context) {
+@@ -38,12 +38,12 @@ pub(super) fn about(app: &mut SoundApp, ctx: &egui::Context) {
                      ui.label(crate::localization::text("Dual-licensed MIT OR Apache-2.0. Made with Rust and egui."));
                      ui.hyperlink_to("getartcraft.com/apps/soundcraft", "https://getartcraft.com/apps/soundcraft");
                      ui.hyperlink_to(crate::localization::text("Join us on Discord"), "https://discord.gg/artcraft");
