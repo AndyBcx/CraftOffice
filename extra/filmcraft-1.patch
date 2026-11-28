@@ -1,8 +1,8 @@
 diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
-index fba79d53..a1b550ee 100644
+index a50ce74b..81a4bfe2 100644
 --- a/crates/ui-egui/src/app.rs
 +++ b/crates/ui-egui/src/app.rs
-@@ -533,6 +533,8 @@ impl eframe::App for FilmcraftApp {
+@@ -551,6 +551,8 @@ impl eframe::App for FilmcraftApp {
              self.suspended_ime_controls(&ctx);
          }
          self.ui_inner(ui, frame);
@@ -558,20 +558,20 @@ index 658ff42d..884c510f 100644
 +	Slip: {offset} frames	Glisare: {offset} cadre
 +	at the media limit	la limita materialului
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index 43f389e5..f801d413 100644
+index a80e9576..5546aacd 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
-@@ -433,3 +433,5 @@ pub struct GpuState {
+@@ -446,3 +446,5 @@ pub struct GpuState {
  
  #[doc(hidden)]
  pub mod craftoffice_brand;
 +#[cfg(not(target_arch = "wasm32"))]
 +pub mod craftoffice_compress;
 diff --git a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
-index 2e82cf0f..7d16e5bd 100644
+index 2782dedd..3543953a 100644
 --- a/crates/ui-egui/src/menus.rs
 +++ b/crates/ui-egui/src/menus.rs
-@@ -149,6 +149,8 @@ pub const UI_COMMANDS: &[UiCommand] = &[
+@@ -162,6 +162,8 @@ pub const UI_COMMANDS: &[UiCommand] = &[
      uic!("mode.import", "Import", [], None),
      uic!("mode.edit", "Edit", [], None),
      uic!("mode.export", "Export", ["File", "Export"], Some("Cmd+M")),
@@ -580,8 +580,8 @@ index 2e82cf0f..7d16e5bd 100644
      uic!("help.discord", "Join the ArtCraft Discord…", ["Help"], None),
      uic!("help.website", "ArtCraft Website", ["Help"], None),
      uic!("help.appPage", "FilmCraft on getartcraft.com", ["Help"], None),
-@@ -529,6 +531,11 @@ pub fn invoke_command(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, mut
-             app.ui.mode = Mode::Export;
+@@ -630,6 +632,11 @@ pub fn invoke_command(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, mut
+             app.set_mode(Mode::Export);
              return Ok(Value::Null);
          }
 +        #[cfg(not(target_arch = "wasm32"))]

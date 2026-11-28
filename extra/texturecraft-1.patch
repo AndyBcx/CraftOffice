@@ -1,5 +1,5 @@
 diff --git a/apps/texturecraft/src/craftoffice_i18n.rs b/apps/texturecraft/src/craftoffice_i18n.rs
-index 26e8e25..aee47a1 100644
+index 26e8e25e..aee47a1f 100644
 --- a/apps/texturecraft/src/craftoffice_i18n.rs
 +++ b/apps/texturecraft/src/craftoffice_i18n.rs
 @@ -49,6 +49,17 @@ pub fn install() {
@@ -21,7 +21,7 @@ index 26e8e25..aee47a1 100644
      egui::widget_text::set_ui_text_translator(lookup);
  }
 diff --git a/crates/ui-egui/src/i18n.rs b/crates/ui-egui/src/i18n.rs
-index d201f24..68335bc 100644
+index c84b3e72..2ca02ab8 100644
 --- a/crates/ui-egui/src/i18n.rs
 +++ b/crates/ui-egui/src/i18n.rs
 @@ -27,8 +27,9 @@ fn shared_languages() -> &'static [craft_i18n::Lang; COUNT] {
@@ -36,16 +36,7 @@ index d201f24..68335bc 100644
  
  pub struct Language {
      /// BCP 47 code ("en", "pt-BR", "zh-Hans").
-@@ -39,7 +40,7 @@ pub struct Language {
-     pub english: &'static str,
- }
- 
--const COUNT: usize = 12;
-+const COUNT: usize = 10;
- 
- pub static LANGUAGES: [Language; COUNT] = [
-     Language { code: "en", name: "English", english: "English" },
-@@ -52,8 +53,6 @@ pub static LANGUAGES: [Language; COUNT] = [
+@@ -53,8 +54,6 @@ pub static LANGUAGES: [Language; COUNT] = [
      Language { code: "zh-Hans", name: "简体中文", english: "Chinese (Simplified)" },
      Language { code: "ko", name: "한국어", english: "Korean" },
      Language { code: "ar", name: "العربية", english: "Arabic" },
@@ -53,9 +44,9 @@ index d201f24..68335bc 100644
 -    Language { code: "ro", name: "Română", english: "Romanian", table: ro::TABLE },
  ];
  
- static CURRENT: AtomicUsize = AtomicUsize::new(0);
+ // Rendering and preferences use the UI thread, including independent test harnesses.
 diff --git a/crates/ui-egui/src/i18n/hu.rs b/crates/ui-egui/src/i18n/hu.rs
-index 833fd60..8c4c879 100644
+index 833fd606..8c4c8794 100644
 --- a/crates/ui-egui/src/i18n/hu.rs
 +++ b/crates/ui-egui/src/i18n/hu.rs
 @@ -1166,4 +1166,47 @@ pub const TABLE: &[(&str, &str)] = &[
@@ -107,7 +98,7 @@ index 833fd60..8c4c879 100644
 +    ("List", "Lista"),
  ];
 diff --git a/crates/ui-egui/src/i18n/ro.rs b/crates/ui-egui/src/i18n/ro.rs
-index 8d98bd1..da8e121 100644
+index 8d98bd19..da8e1214 100644
 --- a/crates/ui-egui/src/i18n/ro.rs
 +++ b/crates/ui-egui/src/i18n/ro.rs
 @@ -1166,4 +1166,46 @@ pub const TABLE: &[(&str, &str)] = &[

@@ -70,6 +70,7 @@ jobs:
             V=$(cargo pkgid | sed -E 's/.*[#@]([0-9][^#@]*)$/\1/')
             N="CraftOffice PhotoCalendar"; mkdir -p "$W/out/apps/$N"
             strip -o "$W/out/apps/$N/$N" target/release/photocalendar
+            cp -r assets/fonts "$W/out/apps/$N/fonts"
             printf '{"id":"photocalendar","version":"%s","exe":"%s"}' "$V" "$N" > "$W/out/apps/$N/craftoffice.json"
             exit 0
           fi

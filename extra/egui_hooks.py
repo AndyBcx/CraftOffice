@@ -48,8 +48,14 @@ for ver in sorted(crates):
                 tar.extract(m, d, filter="data")
             else:
                 tar.extract(m, d)
+    # its own repository: inside the build's checkout `git apply` would take paths from that
+    # repository's root and quietly skip every file
+    subprocess.run(["git", "init", "-q"], cwd=d, check=True)
     subprocess.run(["git", "apply", "-p3", "--whitespace=nowarn", os.path.abspath(patch)], cwd=d, check=True)
     wt = os.path.join(d, "src", "widget_text.rs")
+    with open(wt, encoding="utf-8") as f:
+        if "set_ui_text_translator" not in f.read():
+            sys.exit(f"egui-hook-crate-{ver}: the egui patch did not apply")
     if brand:
         subprocess.run([sys.executable, os.path.join(here, "egui_brand.py"), wt], check=True)
     subprocess.run([sys.executable, os.path.join(here, "egui_about.py"), version, wt], check=True)

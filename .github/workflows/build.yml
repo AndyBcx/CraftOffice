@@ -81,6 +81,8 @@ jobs:
           N="CraftOffice PhotoCalendar"
           mkdir -p "../out/apps/$N"
           cp target/release/photocalendar.exe "../out/apps/$N/$N.exe"
+          # the free fonts (SIL OFL), read from fonts/ beside the program
+          cp -r assets/fonts "../out/apps/$N/fonts"
           printf '{"id":"photocalendar","version":"%s","exe":"%s.exe"}' "$V" "$N" > "../out/apps/$N/craftoffice.json"
       - uses: actions/upload-artifact@v4
         with:
@@ -97,21 +99,21 @@ jobs:
         include:
           - { app: wordcraft,      src: tar:wordcraft-main }
           - { app: gridcraft,      src: tar:gridcraft-main }
-          - { app: pdfcraft,       src: rebase:9b3e6d6f38de906c758d93e8ece45cbf105fd515:6e910675c68dd5092e889065cfe8d0274c1b2742, i18n: 866aff71dd63d8369eb100b9c432b5af1400c22a }
-          - { app: photocraft,     src: rebase:45066c48292e92229ada3459a83453439514c83d:e22facf45b0e7f0fbeb3b439ed44a950da9783b4, i18n: e02939ef009218e81c44e8ec001fbb7603461de4 }
-          - { app: deckcraft,      src: rebase:7cc73ab1895ed2e30c8afbcada20c70b9ea0a440:02f7fcdf734bf37396112bdfa634f27d0d424fbf }
-          - { app: designcraft,    src: rebase:33a467872268c98536231491865b4011b0275b17:cdd650ccddcd945bc3bd050f40299955a7dd1c4b }
-          - { app: vectorcraft,    src: rebase:f4922aa7ac99a4f6d56fc68a83a44945207ec610:99f7de526289f9e50bf387b81d1fcefe904a0f15 }
-          - { app: lightcraft,     src: rebase:361e3bc0c838ffe5e5cea515b1fe5b71951989c6:ea033fbe1c6dacdc7e1e99ee5a3e9fa0ce35d78c }
-          - { app: filmcraft,      src: rebase:cedf0c9bd060eb06a977d532402be2097c9ebe42:740adb32cc38a9c685ef531c2d6a8e57cde66203 }
-          - { app: effectcraft,    src: rebase:582344dd4ef462362c02e56e3094de7af01847ab:59aed45057561ff2ca0e3c27ab849eebbfaf71dc }
-          - { app: soundcraft,     src: rebase:a52bbdccbe15342f44e0de1906bf71a621e7a68f:768c0f972d6fce82224eb8db001094868a0c321a }
-          - { app: anicraft,       src: rebase:d0beaf253274948b55ee9e1107749f9491bff880:87e3c465f19eceada4d7604e9dbb1ef9ad69680e }
-          - { app: figcraft,       src: rebase:4acc293c2ec941ac1400837ee7e3ab51780399f8:ef2a9eeefc7af519fe7c26cc4c4b31d2284b09af }
-          - { app: cadcraft,       src: rebase:7526dc62c14e71b3c8d46e73bbf1fa29ef506af1:0d4b100209990e485891d85c70ff465c8e709156 }
-          - { app: materialcraft,  src: rebase:65f7bfd3e5f40d695d03162285879f0f8079ff6c:a52a8ff951f4a9ba2941067749775a8340cc0c01 }
-          - { app: texturecraft,   src: rebase:34a196190fe2daa2f43017a0f32b254cca4836f2:14f650202974b509524950048305f1f36fee4282 }
-          - { app: craft-anything, src: rebase:3d5eb2577397ac632fb6dfffd94aa9787ad17acc:4f0f744b7e2ad16198a7b08b9edc53286b1b8b67 }
+          - { app: pdfcraft,       src: rebase:9b3e6d6f38de906c758d93e8ece45cbf105fd515:81a475e55f0db5efaccc211833c9879fab3a0bdb, i18n: 866aff71dd63d8369eb100b9c432b5af1400c22a }
+          - { app: photocraft,     src: rebase:45066c48292e92229ada3459a83453439514c83d:2c88f264a0464d0ca9b94de58a55c4bcebb156c9, i18n: e02939ef009218e81c44e8ec001fbb7603461de4 }
+          - { app: deckcraft,      src: rebase:7cc73ab1895ed2e30c8afbcada20c70b9ea0a440:f67d07f132609482297a8272a8620e197262a51e }
+          - { app: designcraft,    src: rebase:33a467872268c98536231491865b4011b0275b17:d3fcb375c1b4a82e155d93df7baab385b076211f }
+          - { app: vectorcraft,    src: rebase:f4922aa7ac99a4f6d56fc68a83a44945207ec610:3d88485fa657ae225cd6aa7ece5d9346b268d673 }
+          - { app: lightcraft,     src: rebase:361e3bc0c838ffe5e5cea515b1fe5b71951989c6:4d8381409c20c2f90f284d68a5622ef981200808 }
+          - { app: filmcraft,      src: rebase:cedf0c9bd060eb06a977d532402be2097c9ebe42:a9429d82d2e5b87539eb38926d5fc0f2ddcd7724 }
+          - { app: effectcraft,    src: rebase:582344dd4ef462362c02e56e3094de7af01847ab:163eb89477f1c7ee0808fbd65e2ccb0c21ab12e0 }
+          - { app: soundcraft,     src: rebase:a52bbdccbe15342f44e0de1906bf71a621e7a68f:728634732f0a88ae3a94cf9da967edaa300e062c }
+          - { app: anicraft,       src: rebase:d0beaf253274948b55ee9e1107749f9491bff880:b24cbcdd3952a0f0ae370effe731121fa772aff8 }
+          - { app: figcraft,       src: rebase:4acc293c2ec941ac1400837ee7e3ab51780399f8:23a874a8c6db781cbb5331defe644fa02a2b73de }
+          - { app: cadcraft,       src: rebase:7526dc62c14e71b3c8d46e73bbf1fa29ef506af1:190d88fc0394d8e22ee1fd079bbce4d1208500b6 }
+          - { app: materialcraft,  src: rebase:65f7bfd3e5f40d695d03162285879f0f8079ff6c:f7088820ae934991935bab07fb9c01b8cc643676 }
+          - { app: texturecraft,   src: rebase:34a196190fe2daa2f43017a0f32b254cca4836f2:5e8ccdb9d367e455ad593e96e5eb8e3a6dcec1fb }
+          - { app: craft-anything, src: rebase:3d5eb2577397ac632fb6dfffd94aa9787ad17acc:14c502c55751b04a7ed15833cbd2cfe8296f60f0 }
     steps:
       - name: Git settings
         if: ${{ !inputs.only || inputs.only == matrix.app }}
